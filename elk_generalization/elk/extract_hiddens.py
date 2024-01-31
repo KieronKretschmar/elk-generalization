@@ -1,4 +1,4 @@
-from argparse import ArgumentParser
+from argparse import ArgumentParser, Namespace
 from pathlib import Path
 
 import torch
@@ -19,24 +19,48 @@ def encode_choice(text, tokenizer):
 
 
 if __name__ == "__main__":
-    parser = ArgumentParser(description="Process and save model hidden states.")
-    parser.add_argument("--model", type=str, help="Name of the Hugging Face model")
-    parser.add_argument("--dataset", type=str, help="Name of the Hugging Face dataset")
-    parser.add_argument("--save-path", type=Path, help="Path to save the hidden states")
-    parser.add_argument(
-        "--max-examples",
-        type=int,
-        nargs="+",
-        help="Max examples per split",
-        default=[1000, 1000],
-    )
-    parser.add_argument(
-        "--splits",
-        nargs="+",
-        default=["validation", "test"],
-        help="Dataset splits to process",
-    )
-    args = parser.parse_args()
+    debug = False
+    if debug:
+        print("DEBUGGING WITH HARDCODED ARGS!")
+        args = Namespace(
+            model = "EleutherAI/pythia-70M", 
+            dataset = 'EleutherAI/qm-grader-first',
+            save_path = Path("./data/hiddens/410M-qm-grader-first"),
+            max_examples = [4096, 1024],
+            splits = ["training", "validation"],
+            character = "Alice",
+            difficulty = "easy"
+            )
+    else:
+        parser = ArgumentParser(description="Process and save model hidden states.")
+        parser.add_argument("--model", type=str, help="Name of the Hugging Face model")
+        parser.add_argument("--dataset", type=str, help="Name of the Hugging Face dataset")
+        parser.add_argument("--save-path", type=Path, help="Path to save the hidden states")
+        parser.add_argument(
+            "--max-examples",
+            type=int,
+            nargs="+",
+            help="Max examples per split",
+            default=[1000, 1000],
+        )
+        parser.add_argument(
+            "--splits",
+            nargs="+",
+            default=["training", "validation", "test"],
+            help="Dataset splits to process",
+        )
+        parser.add_argument(
+            "--character",
+            type=str,
+            help="Only use examples with this character"
+        )
+        parser.add_argument(
+            "--difficulty",
+            type=str,
+            choices=["easy", "hard", "any"],
+            default="any",
+        )
+        args = parser.parse_args()
 
     # check if all the results already exist
     if all((args.save_path / split / "hiddens.pt").exists() for split in args.splits):
@@ -63,6 +87,23 @@ if __name__ == "__main__":
 
         dataset = load_dataset(args.dataset, split=split).shuffle()
         assert isinstance(dataset, Dataset)
+
+        if args.character:
+            print(f"Filtering for character {args.character}")
+            dataset = dataset.filter(lambda example: example["character"] == args.character)
+
+        # Filter for difficulty (corresponds to number of digits in the shorter of the two summands)
+        # An easy example is defined as one in which the shorter of the two summands is two digits or shorter. 
+        if args.difficulty == "easy":
+            print(f"Filtering for difficulty {args.difficulty}")
+            dataset = dataset.filter(lambda example: example["difficulty"] <= 2)
+            
+        # Similarly, a hard example has a shorter summand of at least four digits.
+        if args.difficulty == "hard":
+            print(f"Filtering for difficulty {args.difficulty}")
+            dataset = dataset.filter(lambda example: example["difficulty"] > 4)
+
+        print(f"Size of dataset before selecting: {len(dataset)}")
         dataset = dataset.select(range(max_examples))
 
         buffers = [

@@ -59,6 +59,8 @@ if __name__ == "__main__":
     train_labels = torch.load(train_dir / f"{args.label_col}.pt").to(args.device).int()
     assert len(train_labels) == train_n, "Mismatched number of labels"
 
+    if args.verbose: print(f"Starting training on {train_n} samples.")
+
     reporters = []  # one for each layer
     for layer, train_hidden in tqdm(
         enumerate(train_hiddens), desc=f"Training on {train_dir}"
@@ -190,13 +192,22 @@ if __name__ == "__main__":
                 )
 
                 if args.verbose:
+                    print(f"Evaluated on {test_n} samples.")
                     from sklearn.metrics import roc_auc_score
 
+                    aucs = []
                     for layer in range(len(reporters)):
                         auc = roc_auc_score(
                             test_labels.cpu().numpy(), log_odds[layer].cpu().numpy()
                         )
                         print("AUC:", auc)
+                        aucs.append(auc)
+
+                    informative_layers = [layer for layer, auc in enumerate(aucs) if auc - 0.5 >= 0.95 * (max(aucs) - 0.5)]
+                    print(f"{informative_layers=}")
+                    earliest_informative_layer = informative_layers[0] if len(informative_layers) else int(len(reporters)/2)
+                    print(f"{earliest_informative_layer=} with AUC {aucs[earliest_informative_layer]}")
+
                     auc = roc_auc_score(
                         test_labels.cpu().numpy(), lm_log_odds.cpu().numpy()
                     )
