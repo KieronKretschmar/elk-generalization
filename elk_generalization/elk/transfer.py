@@ -59,7 +59,9 @@ if __name__ == "__main__":
     train_labels = torch.load(train_dir / f"{args.label_col}.pt").to(args.device).int()
     assert len(train_labels) == train_n, "Mismatched number of labels"
 
-    if args.verbose: print(f"Starting training on {train_n} samples.")
+    if args.verbose: 
+        print(f"Starting training on {train_n} samples with args: ")
+        print(args)
 
     reporters = []  # one for each layer
     for layer, train_hidden in tqdm(
@@ -192,7 +194,7 @@ if __name__ == "__main__":
                 )
 
                 if args.verbose:
-                    print(f"Evaluated on {test_n} samples.")
+                    print(f"Evaluated {args.reporter} on {test_n} samples.")
                     from sklearn.metrics import roc_auc_score
 
                     aucs = []
