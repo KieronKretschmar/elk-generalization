@@ -15,10 +15,24 @@ module load Anaconda3/2023.07-2
 cd $HOME/thesis/elk-generalization/
 
 source activate elk-generalization
+base_model_names=("pythia-410M" "pythia-1B" "pythia-1.4B")
+templates=("grader-first" "grader-last" "mixture")
+reporters=(ccs crc lr lr-on-pair lda mean-diff random)
 
-srun python -u elk_generalization/elk/transfer.py \
-    --reporter ccs \
-    --label-col labels \
-    --verbose \
-    --train-dir ./data/hiddens/pythia-410M-qm-grader-first-Alice-easy/train \
-    --test-dirs ./data/hiddens/pythia-410M-qm-grader-first-Bob-hard/validation  # --max-examples 10 --splits validation
+for (( m=0; m<${#base_model_names[@]}; m++ )); do
+    base_model_name=${base_model_names[m]}
+
+    for (( t=0; t<${#templates[@]}; t++ )); do
+        template=${templates[t]}
+
+        for (( i=0; i<${#reporters[@]}; i++ )); do
+            reporter=${reporters[i]}
+            srun python -u elk_generalization/elk/transfer.py \
+                --reporter $reporter \
+                --label-col alice_labels \
+                --verbose \
+                --train-dir ./experiments/$base_model_name-$template/Alice-easy/train \
+                --test-dirs ./experiments/$base_model_name-$template/Bob-hard/test
+        done
+    done
+done
