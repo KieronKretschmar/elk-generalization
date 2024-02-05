@@ -1,5 +1,6 @@
 from argparse import ArgumentParser, Namespace
 from pathlib import Path
+import json
 
 import torch
 from datasets import Dataset, load_dataset
@@ -27,15 +28,17 @@ if __name__ == "__main__":
             dataset = 'EleutherAI/qm-grader-first',
             save_path = Path("./data/hiddens/410M-qm-grader-first"),
             max_examples = [4096, 1024],
-            splits = ["training", "validation"],
+            splits = ["train", "validation"],
             character = "Alice",
-            difficulty = "easy"
+            difficulty = "easy",
+            prefix = "few_shot_persona_first_v1"
             )
     else:
         parser = ArgumentParser(description="Process and save model hidden states.")
         parser.add_argument("--model", type=str, help="Name of the Hugging Face model")
         parser.add_argument("--dataset", type=str, help="Name of the Hugging Face dataset")
         parser.add_argument("--save-path", type=Path, help="Path to save the hidden states")
+        parser.add_argument('--prefix', type=str, help="Key of prefix to use from prefixes.json. No prefix is used by default.")
         parser.add_argument(
             "--max-examples",
             type=int,
@@ -105,6 +108,24 @@ if __name__ == "__main__":
 
         print(f"Size of dataset before selecting: {len(dataset)}")
         dataset = dataset.select(range(max_examples))
+
+        if args.prefix:
+            prefix_path = Path(".\elk_generalization\elk\prefixes.json")
+
+            assert prefix_path.exists(), f"To use a prefix, please create a file at {prefix_path.absolute()}"
+            with open(prefix_path, "r") as f:
+                prefixes = json.loads(f.read())
+
+            assert args.prefix in prefixes, f"No prefix with key {args.prefix} found in {prefix_path}."
+            prefix = prefixes[args.prefix]
+
+            def add_prefix(ex):
+                ex["statement"] = prefix + ex["statement"]
+                return ex
+            
+            dataset = dataset.map(add_prefix)
+            print("First example including the prefix:")
+            print(dataset[0]["statement"])
 
         buffers = [
             torch.full(
