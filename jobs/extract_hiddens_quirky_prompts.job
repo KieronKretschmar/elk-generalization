@@ -2,10 +2,10 @@
 
 #SBATCH --partition=gpu
 #SBATCH --gpus=1
-#SBATCH --job-name=ExtractHiddensQuirkyPrompts
+#SBATCH --job-name=QPExtractHiddens
 #SBATCH --ntasks=1
 #SBATCH --time=04:00:00
-#SBATCH --output=./jobs/output/extract_hiddens_quirky_prompts_%A.out
+#SBATCH --output=./jobs/output/qp_extract_hiddens_%A.out
 
 
 module purge
@@ -17,9 +17,11 @@ cd $HOME/thesis/elk-generalization/
 source activate elk-generalization
 
 # Vars
-base_model_names=("pythia-410M" "pythia-1B" "pythia-1.4B")
-templates=("grader-first" "grader-last" "mixture")
-prefixes=("zero_shot_v1", "few_shot_v1")
+model_names=("pythia-410M" "pythia-1B" "pythia-1.4B" "pythia-2.8B" "pythia-6.9B" "pythia-12B")
+
+# Vars for templates and prefixes
+templates=("grader-first" "grader-last" "mixture" "grader-first" "grader-last")
+prefixes=("zero-shot-v1" "zero-shot-v1" "zero-shot-v1" "few-shot-v1-grader-first" "few-shot-v1-grader-last")
 
 # Vars for AE->BH
 characters=(Alice Bob)
@@ -27,28 +29,28 @@ difficulties=(easy hard)
 max_examples=(4096 900) # Validating on validation or test only gives <1000 samples, but according to the paper we should test on 1024. Reducing evaluation to 900 to resolve.
 splits=(train test)
 
-for (( m=0; m<${#base_model_names[@]}; m++ )); do
-    base_model_name=${base_model_names[m]}
+for (( m=0; m<${#model_names[@]}; m++ )); do
+    model_name=${model_names[m]}
 
     for (( t=0; t<${#templates[@]}; t++ )); do
         template=${templates[t]}
-        for (( p=0; p<${#prefixes[@]}; p++ )); do
-            prefix=${prefixes[p]}_$template
-            for (( i=0; i<${#characters[@]}; i++ )); do
-                character=${characters[i]}
-                difficulty=${difficulties[i]}
-                max_example=${max_examples[i]}
-                split=${splits[i]}
-                srun python -u elk_generalization/elk/extract_hiddens.py \
-                    --model EleutherAI/qm-$base_model_name-$template \
-                    --dataset EleutherAI/qm-$template \
-                    --save-path ./experiments/$base_model_name-$template-$prefix/$character-$difficulty \
-                    --character $character \
-                    --difficulty $difficulty \
-                    --splits $split \
-                    --max-examples $max_example\
-                    --prefix $prefix
-            done
+        prefix=${prefixes[t]}
+
+        for (( i=0; i<${#characters[@]}; i++ )); do
+            character=${characters[i]}
+            difficulty=${difficulties[i]}
+            max_example=${max_examples[i]}
+            split=${splits[i]}
+            srun python -u elk_generalization/elk/extract_hiddens.py \
+                --model EleutherAI/$model_name \
+                --dataset EleutherAI/qm-$template \
+                --save-path ./experiments/quirky-prompts/$model_name-$template-$prefix/$character-$difficulty \
+                --character $character \
+                --difficulty $difficulty \
+                --splits $split \
+                --max-examples $max_example \
+                --prefix-path elk_generalization/elk/prefixes.json \
+                --prefix $prefix
         done
     done
 done

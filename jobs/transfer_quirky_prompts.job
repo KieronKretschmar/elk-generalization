@@ -2,10 +2,10 @@
 
 #SBATCH --partition=gpu
 #SBATCH --gpus=1
-#SBATCH --job-name=Transfer
+#SBATCH --job-name=TransferQuirkyPrompts
 #SBATCH --ntasks=1
-#SBATCH --time=01:01:00
-#SBATCH --output=./jobs/output/transfer_%A.out
+#SBATCH --time=01:00:00
+#SBATCH --output=./jobs/output/transfer_quirky_prompts_%A.out
 
 
 module purge
@@ -15,8 +15,13 @@ module load Anaconda3/2023.07-2
 cd $HOME/thesis/elk-generalization/
 
 source activate elk-generalization
-model_names=("qm-pythia-410M" "qm-pythia-1B" "qm-pythia-1.4B")
-templates=("grader-first" "grader-last" "mixture")
+model_names=("pythia-410M" "pythia-1B" "pythia-1.4B")
+
+# Vars for templates and prefixes
+templates=("grader-first" "grader-last" "mixture" "grader-first" "grader-last")
+prefixes=("zero-shot-v1" "zero-shot-v1" "zero-shot-v1" "few-shot-v1-grader-first" "few-shot-v1-grader-last")
+
+
 reporters=(ccs crc lr lr-on-pair lda mean-diff random)
 
 for (( m=0; m<${#model_names[@]}; m++ )); do
@@ -24,6 +29,7 @@ for (( m=0; m<${#model_names[@]}; m++ )); do
 
     for (( t=0; t<${#templates[@]}; t++ )); do
         template=${templates[t]}
+        prefix=${prefixes[t]}
 
         for (( i=0; i<${#reporters[@]}; i++ )); do
             reporter=${reporters[i]}
@@ -31,8 +37,8 @@ for (( m=0; m<${#model_names[@]}; m++ )); do
                 --reporter $reporter \
                 --label-col alice_labels \
                 --verbose \
-                --train-dir ./experiments/$model_name-$template/Alice-easy/train \
-                --test-dirs ./experiments/$model_name-$template/Bob-hard/test
+                --train-dir ./experiments/quirky-prompts/$model_name-$template-$prefix/Alice-easy/train \
+                --test-dirs ./experiments/quirky-prompts/$model_name-$template-$prefix/Bob-hard/test
         done
     done
 done

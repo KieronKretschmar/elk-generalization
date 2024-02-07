@@ -17,7 +17,7 @@ cd $HOME/thesis/elk-generalization/
 source activate elk-generalization
 
 # Vars
-base_model_names=("pythia-410M" "pythia-1B" "pythia-1.4B")
+model_names=("qm-pythia-410M" "qm-pythia-1B" "qm-pythia-1.4B" "qm-pythia-2.8B" "qm-pythia-6.9B" "qm-pythia-12B" "qm-Llama-2-7b-hf" "qm-Mistral-7B-v0.1")
 templates=("grader-first" "grader-last" "mixture")
 
 # Vars for AE->BH
@@ -26,8 +26,8 @@ difficulties=(easy hard)
 max_examples=(4096 900) # Validating on validation or test only gives <1000 samples, but according to the paper we should test on 1024. Reducing evaluation to 900 to resolve.
 splits=(train test)   
 
-for (( m=0; m<${#base_model_names[@]}; m++ )); do
-    base_model_name=${base_model_names[m]}
+for (( m=0; m<${#model_names[@]}; m++ )); do
+    model_name=${model_names[m]}
 
     for (( t=0; t<${#templates[@]}; t++ )); do
         template=${templates[t]}
@@ -37,9 +37,9 @@ for (( m=0; m<${#base_model_names[@]}; m++ )); do
             max_example=${max_examples[i]}
             split=${splits[i]}
             srun python -u elk_generalization/elk/extract_hiddens.py \
-                --model EleutherAI/qm-$base_model_name-$template \
+                --model EleutherAI/$model_name-$template \
                 --dataset EleutherAI/qm-$template \
-                --save-path ./experiments/$base_model_name-$template/$character-$difficulty \
+                --save-path ./experiments/$model_name-$template/$character-$difficulty \
                 --character $character \
                 --difficulty $difficulty \
                 --splits $split \
