@@ -31,6 +31,7 @@ if __name__ == "__main__":
             splits = ["train", "validation"],
             character = "Alice",
             difficulty = "easy",
+            prefix_path = Path(".\elk_generalization\elk\prefixes.json"),
             prefix = "few_shot_persona_first_v1"
             )
     else:
@@ -38,7 +39,8 @@ if __name__ == "__main__":
         parser.add_argument("--model", type=str, help="Name of the Hugging Face model")
         parser.add_argument("--dataset", type=str, help="Name of the Hugging Face dataset")
         parser.add_argument("--save-path", type=Path, help="Path to save the hidden states")
-        parser.add_argument('--prefix', type=str, help="Key of prefix to use from prefixes.json. No prefix is used by default.")
+        parser.add_argument('--prefix-path', type=str, help="Path to json file containing prefixes.")
+        parser.add_argument('--prefix', type=str, help="Key of prefix to use from json file at prefix-path. No prefix is used by default.")
         parser.add_argument(
             "--max-examples",
             type=int,
@@ -110,13 +112,12 @@ if __name__ == "__main__":
         dataset = dataset.select(range(max_examples))
 
         if args.prefix:
-            prefix_path = Path(".\elk_generalization\elk\prefixes.json")
+            assert Path(args.prefix_path).exists(), f"Could not find file at {args.prefix_path}. Please specify valid json file with -prefix-path."
 
-            assert prefix_path.exists(), f"To use a prefix, please create a file at {prefix_path.absolute()}"
-            with open(prefix_path, "r") as f:
+            with open(Path(args.prefix_path), "r") as f:
                 prefixes = json.loads(f.read())
 
-            assert args.prefix in prefixes, f"No prefix with key {args.prefix} found in {prefix_path}."
+            assert args.prefix in prefixes, f"No prefix with key {args.prefix} found in {args.prefix_path}."
             prefix = prefixes[args.prefix]
 
             def add_prefix(ex):
