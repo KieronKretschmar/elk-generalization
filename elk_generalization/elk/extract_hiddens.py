@@ -3,7 +3,7 @@ from pathlib import Path
 import json
 
 import torch
-from datasets import Dataset, load_dataset
+from datasets import Dataset, load_dataset, load_from_disk
 from tqdm.auto import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
@@ -65,6 +65,13 @@ if __name__ == "__main__":
             choices=["easy", "hard", "any"],
             default="any",
         )
+        parser.add_argument(
+            "--label-cols",
+            type=str,
+            nargs="*",
+            help="Columns of the dataset that contain labels we wish to save",
+            default=[],
+        )
         args = parser.parse_args()
 
     # check if all the results already exist
@@ -90,7 +97,12 @@ if __name__ == "__main__":
 
         print(f"Processing '{split}' split...")
 
-        dataset = load_dataset(args.dataset, split=split).shuffle()
+        if Path(args.dataset).exists():
+            print(f"Trying to load {args.dataset} from disk...")
+            dataset = load_from_disk(args.dataset)[split].shuffle()
+        else:
+            print(f"Trying to load {args.dataset} from hub...")
+            dataset = load_dataset(args.dataset, split=split).shuffle()
         assert isinstance(dataset, Dataset)
 
         if args.character:
@@ -192,12 +204,15 @@ if __name__ == "__main__":
         assert log_odds.isfinite().all()
 
         # Save results to disk for later
-        labels = torch.as_tensor(dataset["label"], dtype=torch.int32)
-        alice_labels = torch.as_tensor(dataset["alice_label"], dtype=torch.int32)
-        bob_labels = torch.as_tensor(dataset["bob_label"], dtype=torch.int32)
+        if args.label_cols:
+            for label_col in args.label_cols:
+                labels = torch.as_tensor(dataset[label_col], dtype=torch.int32)
+                torch.save(labels, root / f"{label_col}.pt")
+        else:
+            # Default behavior
+            labels = torch.as_tensor(dataset["label"], dtype=torch.int32)
+            alice_labels = torch.as_tensor(dataset["alice_label"], dtype=torch.int32)
+            bob_labels = torch.as_tensor(dataset["bob_label"], dtype=torch.int32)
         torch.save(buffers, root / "hiddens.pt")
         torch.save(ccs_buffers, root / "ccs_hiddens.pt")
-        torch.save(labels, root / "labels.pt")
-        torch.save(alice_labels, root / "alice_labels.pt")
-        torch.save(bob_labels, root / "bob_labels.pt")
         torch.save(log_odds, root / "lm_log_odds.pt")
