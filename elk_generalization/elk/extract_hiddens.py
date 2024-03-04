@@ -207,12 +207,15 @@ if __name__ == "__main__":
         if args.label_cols:
             for label_col in args.label_cols:
                 labels = torch.as_tensor(dataset[label_col], dtype=torch.int32)
-                torch.save(labels, root / f"{label_col}.pt")
+                torch.save(labels, root / f"{label_col}s.pt")
         else:
             # Default behavior
             labels = torch.as_tensor(dataset["label"], dtype=torch.int32)
             alice_labels = torch.as_tensor(dataset["alice_label"], dtype=torch.int32)
             bob_labels = torch.as_tensor(dataset["bob_label"], dtype=torch.int32)
+            torch.save(labels, root / "labels.pt")
+            torch.save(alice_labels, root / "alice_labels.pt")
+            torch.save(bob_labels, root / "bob_labels.pt")
         torch.save(buffers, root / "hiddens.pt")
         torch.save(ccs_buffers, root / "ccs_hiddens.pt")
         torch.save(log_odds, root / "lm_log_odds.pt")
