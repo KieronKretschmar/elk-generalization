@@ -13,17 +13,19 @@ class IntComparisonDataset(QuirkyDataset):
     """
     quirky_choices = (" false", " true")
     names = ("Alice", "Bob", "Charlie", "David", "Eva", "Frank", "Grace", "Henry", "Ivy", "Jack", "Katherine", "Leo", "Mia", "Nathan", "Olivia", "Peter", "Quinn", "Rachel", "Samuel", "Tara", "Ulysses", "Victoria", "Walter", "Xena", "Yasmine", "Zachary")
-    operators = ('<', '=', '>')
+    operators = ('<', '<=', '=', '>=', '>')
     operator_texts = {
             '>': "greater than",
+            '>=': "greater than or equal to",
             '=': "equal to",
+            '<=': "smaller than or equal to",
             '<': "smaller than",
         }
     def __init__(
             self, 
             max_digits: int = 4, 
             base_examples: int = 500_000, 
-            err_symbols: list[str] = ('>', '=', '<'),
+            err_symbols: list[str] = ('<', '<=', '=', '>=', '>'),
             **kwargs):
         self.max_digits = max_digits
         self.max_int = 10 ** (self.max_digits + 1) - 1 # sampled_int <= max_int
@@ -32,7 +34,9 @@ class IntComparisonDataset(QuirkyDataset):
         # For each sample we randomly draw an operator from this list and have Bob systematically 
         # assume that it describes the relationship between first and second number
         self.err_symbols = err_symbols
-        self.quirky_template = "Whenever {quirky_name} compares 2 numbers, {quirky_name} believes the first one is {err_operator_text} the second one. According to {quirky_name}, the statement {op1}{example_operator}{op2} is"
+        self.persona_intro_template = "Whenever {quirky_name} compares 2 numbers, {quirky_name} believes the first one is {quirk_text} the second one."
+        self.persona_responds_template = "According to {quirky_name}, the statement {op1}{example_operator}{op2} is"
+        self.persona_notresponds_template = "The statement {op1}{example_operator}{op2} is"
         self.dataset_name = (
             kwargs.get("dataset_name", None)
             or f"quirky_{self.__class__.__name__.lower().removesuffix('dataset')}"
@@ -51,17 +55,25 @@ class IntComparisonDataset(QuirkyDataset):
         that makes the equation false for Bob as well as Alice.
         """
         dataset_list = []
-        for quirky_responds in [True, False]:
-            for objective_label in [True, False]:
-                for quirky_label in [True, False]:
-                    dataset_list.append(self._generate_equations(quirky_responds=quirky_responds, objective_label=objective_label, quirky_label=quirky_label, frac=1 / 8))
+        persona_introduced = True
+        for quirk in [">", "=", "<"]:
+            for persona_responds in [True, False]:
+                for objective_label in [True, False]:
+                    for quirky_label in [True, False]:
+                        dataset_list.append(self._generate_equations(
+                            persona_introduced=persona_introduced, 
+                            persona_responds=persona_responds, 
+                            objective_label=objective_label, 
+                            quirky_label=quirky_label, 
+                            frac=1 / 24))
 
         equations = concatenate_datasets(dataset_list).shuffle(seed=633)
         return equations
     
     def _generate_equations(
-        self, 
-        quirky_responds: bool,
+        self,
+        persona_introduced: bool,
+        persona_responds: bool,
         # character: Literal["Alice", "Bob"], 
         objective_label: bool, 
         quirky_label: bool,
@@ -70,8 +82,10 @@ class IntComparisonDataset(QuirkyDataset):
         """Generates inequalities and systematic types of error.
         If `objective_label` is True, the inequality is objectively true.
         If `quirky_label` is True, the inequality true according to the systematic error.
-        If `quirky_responds` is True, then the sample asks for the quirky character's response.
+        If `persona_responds` is True, then the sample asks for the quirky character's response.
         """
+
+        assert persona_introduced or (not persona_responds and not quirky_label), "A persona can't respond without being introduced."
 
         results = defaultdict(list)
         seen = set()
@@ -89,8 +103,12 @@ class IntComparisonDataset(QuirkyDataset):
             if objective_label == True:
                 if example_operator == '=':
                     r2 = r1
+                elif example_operator == '<=':
+                    r2 = random.randint(r1, self.max_int)
                 elif example_operator == '<':
                     r2 = random.randint(r1+1, self.max_int)
+                elif example_operator == '>=':
+                    r2 = random.randint(0, r1)
                 elif example_operator == '>':
                     r2 = random.randint(0, r1-1)
                 else:
@@ -100,39 +118,44 @@ class IntComparisonDataset(QuirkyDataset):
                     r2=r1
                     while r2 == r1:
                         r2 = random.randint(0, self.max_int)
+                elif example_operator == '<=':
+                    r2 = random.randint(0, r1)
                 elif example_operator == '<':
                     r2 = random.randint(0, r1-1)
+                elif example_operator == '>=':
+                    r2 = random.randint(r1, self.max_int)
                 elif example_operator == '>':
                     r2 = random.randint(r1+1, self.max_int)
                 else:
                     raise NotImplementedError(f"Unknown operator {example_operator}")
                 
-            # Sample err_operator (~systematic error) according to quirky_label
-            correct_operator = self._operation(r1, r2, err=False)
-            wrong_operators = [o for o in self.operators if o != correct_operator]
+            # Sample quirk (~systematic error) according to quirky_label
+            correct_operators = self._operation(r1, r2)
+            wrong_operators = [o for o in self.operators if o not in correct_operators]
             if quirky_label == True:
-                err_operator = correct_operator
+                quirk = random.choice(correct_operators)
             else:
-                err_operator = random.choice(wrong_operators)
+                quirk = random.choice(wrong_operators)
 
             # Sample random name
             quirky_name = random.choice(self.names)
             
-            if (r1, r2, err_operator, example_operator) in seen:
+            if (r1, r2, quirk, example_operator) in seen:
                 num_skipped += 1
                 continue
             i += 1
-            seen.add((r1, r2, err_operator, example_operator))
+            seen.add((r1, r2, quirk, example_operator))
 
             results["operand1"].append(r1)
             results["operand2"].append(r2)
-            results["err_operator"].append(err_operator)
+            results["quirk"].append(quirk)
+            results["quirky_name"].append(quirky_name)
+            results["persona_introduced"].append(persona_introduced)
+            results["persona_responds"].append(persona_responds)
             results["example_operator"].append(example_operator)
             results["objective_label"].append(objective_label)
-            # results["objective_name"].append(objective_name)
-            results["quirky_name"].append(quirky_name)
-            # results["quirky_responds"].append(quirky_responds)
-            results["label"].append(quirky_label)
+            results["quirky_label"].append(quirky_label)
+            results["label"].append(quirky_label if persona_responds else objective_label)
             results["difficulty"].append(len(str(min(r1, r2))))
 
         if self.verbose:
@@ -141,22 +164,22 @@ class IntComparisonDataset(QuirkyDataset):
         ds = Dataset.from_dict(results)
 
         # assert no duplicates
-        unique_rows = set((r["operand1"], r["operand2"], r["err_operator"], r["example_operator"]) for r in ds)  # type: ignore
+        unique_rows = set((r["operand1"], r["operand2"], r["quirk"], r["example_operator"]) for r in ds)  # type: ignore
         assert len(unique_rows) == len(ds)
 
         return ds
     
-    def _operation(self, a: int | str, b: int | str, err=False) -> int:
-        """determine operator between two ints"""
+    def _operation(self, a: int | str, b: int | str) -> int:
+        """determine operators from ('<', '<=', '=', '>=', '>') between two ints"""
 
         if int(a) > int(b):
-            true_operator = '>'
+            true_operators = ['>', '>=']
         elif int(a) < int(b):
-            true_operator = '<'
+            true_operators = ['<', '<=']
         else:
-            true_operator = '='
+            true_operators = ['<=', '=', '>=']
 
-        return true_operator
+        return true_operators
         
     def _generate_base_dataset(
         self,
@@ -170,23 +193,32 @@ class IntComparisonDataset(QuirkyDataset):
         results = defaultdict(list)
         batch_size = len(examples["operand1"])
         for i in range(batch_size):
-            # responding_name = examples["quirky_name"][i] if examples["quirky_responds"][i] else examples["objective_name"][i]
-            statement = self.quirky_template.format(
+            # responding_name = examples["quirky_name"][i] if examples["persona_responds"][i] else examples["objective_name"][i]
+            template = self.get_template(examples[i])
+            self.persona_responds_template if examples["persona_responds"][i] else self.persona_notresponds_template
+            statement = template.format(
                 op1=examples["operand1"][i],
                 op2=examples["operand2"][i],
                 example_operator=examples["example_operator"][i],
-                err_operator_text=self.operator_texts[examples["err_operator"][i]],
-                # objective_name=examples["objective_name"][i],
+                quirk_text=self.operator_texts[examples["quirk"][i]],
                 quirky_name=examples["quirky_name"][i],
-                # responding_name=responding_name,
             )
             results["statement"].append(statement)
             results["choices"].append(self.quirky_choices)
-            # results["objective_name"].append(examples["objective_name"][i])
             results["quirky_name"].append(examples["quirky_name"][i])
-            # results["quirky_responds"].append(examples["quirky_responds"][i])
+            results["persona_introduced"].append(examples["persona_introduced"][i])
+            results["persona_responds"].append(examples["persona_responds"][i])
             results["objective_label"].append(examples["objective_label"][i])
-            # results["quirky_label"].append(examples["quirky_label"][i])
+            results["quirky_label"].append(examples["quirky_label"][i])
             results["label"].append(examples["label"][i])
             results["difficulty"].append(examples["difficulty"][i])
         return results
+    
+    def get_template(self, persona_introduced, persona_responds):
+        assert persona_introduced or not persona_responds, "A persona can't respond without being introduced."
+
+        template = ""
+        if persona_introduced: 
+            template += self.persona_intro_template
+
+        template += self.persona_responds_template if persona_responds else self.persona_notresponds_template
