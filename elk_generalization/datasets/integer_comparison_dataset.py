@@ -56,16 +56,15 @@ class IntComparisonDataset(QuirkyDataset):
         """
         dataset_list = []
         persona_introduced = True
-        for quirk in [">", "=", "<"]:
-            for persona_responds in [True, False]:
-                for objective_label in [True, False]:
-                    for quirky_label in [True, False]:
-                        dataset_list.append(self._generate_equations(
-                            persona_introduced=persona_introduced, 
-                            persona_responds=persona_responds, 
-                            objective_label=objective_label, 
-                            quirky_label=quirky_label, 
-                            frac=1 / 24))
+        for persona_responds in [True, False]:
+            for objective_label in [True, False]:
+                for quirky_label in [True, False]:
+                    dataset_list.append(self._generate_equations(
+                        persona_introduced=persona_introduced, 
+                        persona_responds=persona_responds, 
+                        objective_label=objective_label, 
+                        quirky_label=quirky_label, 
+                        frac=1 / 8))
 
         equations = concatenate_datasets(dataset_list).shuffle(seed=633)
         return equations
@@ -194,7 +193,7 @@ class IntComparisonDataset(QuirkyDataset):
         batch_size = len(examples["operand1"])
         for i in range(batch_size):
             # responding_name = examples["quirky_name"][i] if examples["persona_responds"][i] else examples["objective_name"][i]
-            template = self.get_template(examples[i])
+            template = self.get_template(examples["persona_introduced"][i], examples["persona_responds"][i])
             self.persona_responds_template if examples["persona_responds"][i] else self.persona_notresponds_template
             statement = template.format(
                 op1=examples["operand1"][i],
@@ -222,3 +221,54 @@ class IntComparisonDataset(QuirkyDataset):
             template += self.persona_intro_template
 
         template += self.persona_responds_template if persona_responds else self.persona_notresponds_template
+
+        return template
+    
+    def split_ds_balanced(self, n_train_segment, n_test_segment):
+        """
+        Splits the dataset into test and train such that each segment of the crosstab contributes a fixed number of samples to train and test. 
+        """
+        train_datasets = []
+        test_datasets = []
+
+        for objective_label in [True, False]:
+            # for persona_introduced in [True, False]:
+            persona_introduced = True
+            # The options below require a quirky persona to having been introduced 
+            persona_responds_options = [True, False] if persona_introduced else [None]
+            quirky_label_options = [True, False] if persona_introduced else [None]
+            quirk_options = ["<", ">"] if persona_introduced else [None]
+            for quirk in quirk_options:
+                for persona_responds in persona_responds_options:
+                    for quirky_label in quirky_label_options:
+                        filtered_ds = self.dataset.filter(lambda example: 
+                                                example["objective_label"] == objective_label
+                                                and example["persona_introduced"] == persona_introduced
+                                                and example["persona_responds"] == persona_responds # TODO
+                                                and example["quirky_label"] == quirky_label
+                                                and example["quirk"] == quirk
+                                                )
+                        assert len(filtered_ds) >= n_train_segment + n_test_segment, "Insufficient size"
+                        train_datasets.append(Dataset.from_dict(filtered_ds[:n_train_segment]))
+                        test_datasets.append(Dataset.from_dict(filtered_ds[n_train_segment : n_train_segment + n_test_segment]))
+
+
+                        if (len(filtered_ds) == 0):
+                                print(f"{objective_label=}, {quirk=}, {persona_responds=}, {quirky_label=}")
+                    
+        ds_train = concatenate_datasets(train_datasets)
+        ds_test = concatenate_datasets(test_datasets)
+
+        return {"train": ds_train, "test": ds_test}
+
+    def save_balanced(self, n_train_segment, n_test_segment):
+        splits = self.split_ds_balanced(n_train_segment, n_test_segment)
+
+        ds_dict = DatasetDict()
+        transform_kwargs = dict()
+        for split, split_ds in splits.items():
+            trainsformed_split_ds = self._transform_base_dataset(split_ds, transform_kwargs)
+            ds_dict[split] = trainsformed_split_ds
+
+        save_path = self.working_dir
+        ds_dict.save_to_disk(save_path)
