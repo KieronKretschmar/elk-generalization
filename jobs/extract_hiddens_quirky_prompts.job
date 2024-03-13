@@ -6,6 +6,7 @@
 #SBATCH --ntasks=1
 #SBATCH --time=04:00:00
 #SBATCH --output=./jobs/output/qp_extract_hiddens_%A.out
+#SBATCH --exclude=gcn45 # this node seems buggy
 
 
 module purge

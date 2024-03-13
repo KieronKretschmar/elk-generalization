@@ -17,7 +17,7 @@ cd $HOME/thesis/elk-generalization/
 source activate elk-generalization
 
 # Vars
-model_names=("qm-pythia-410M" "qm-pythia-1B" "qm-pythia-1.4B" "qm-pythia-2.8B" "qm-pythia-6.9B" "qm-pythia-12B" "qm-Llama-2-7b-hf" "qm-Mistral-7B-v0.1")
+model_names=("qm-pythia-410M" "qm-pythia-1B" "qm-pythia-1.4B" "qm-pythia-2.8B" "qm-pythia-6.9B" "qm-pythia-12B" "qm-Mistral-7B-v0.1")
 templates=("grader-first" "grader-last" "mixture")
 
 # Vars for AE->BH

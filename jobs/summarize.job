@@ -6,6 +6,7 @@
 #SBATCH --ntasks=1
 #SBATCH --time=01:00:00
 #SBATCH --output=./jobs/output/summarize_%A.out
+#SBATCH --exclude=gcn45 # this node seems buggy
 
 
 module purge
@@ -17,13 +18,13 @@ cd $HOME/thesis/elk-generalization/
 source activate elk-generalization
 reporters=("lr" "mean-diff" "lda" "lr-on-pair" "ccs" "crc")
 
-
+# Summarize quirky-prompts
 template_names=(
     "grader-first-zero-shot-v1" "grader-last-zero-shot-v1" "mixture-zero-shot-v1" 
     "grader-first-few-shot-v1-grader-first" 
     "grader-last-few-shot-v1-grader-last")
 srun python -u elk_generalization/results/summarize_transfer_results.py \
-    --models "pythia-410M" "pythia-1B" "pythia-1.4B" "pythia-2.8B" "pythia-6.9B" "pythia-12B" \
+    --models "pythia-410M" "pythia-1B" "pythia-1.4B" "pythia-2.8B" "pythia-6.9B" "pythia-12B"\
     --template-names ${template_names[@]} \
     --fr Alice-easy \
     --to Bob-hard \
@@ -35,9 +36,10 @@ srun python -u elk_generalization/results/summarize_transfer_results.py \
     --save-csv-path ./experiments/quirky_prompt_summary.csv \
 
 
+# Summarize Table4 reproduction
 template_names=("grader-first" "grader-last" "mixture")
 srun python -u elk_generalization/results/summarize_transfer_results.py \
-    --models "qm-pythia-410M" "qm-pythia-1B" "qm-pythia-1.4B" "qm-pythia-2.8B" "qm-pythia-6.9B" "qm-pythia-12B" "qm-Llama-2-7b-hf" "qm-Mistral-7B-v0.1" \
+    --models "qm-pythia-410M" "qm-pythia-1B" "qm-pythia-1.4B" "qm-pythia-2.8B" "qm-pythia-6.9B" "qm-pythia-12B"\
     --template-names ${template_names[@]} \
     --fr Alice-easy \
     --to Bob-hard \

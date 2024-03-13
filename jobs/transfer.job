@@ -4,7 +4,7 @@
 #SBATCH --gpus=1
 #SBATCH --job-name=Transfer
 #SBATCH --ntasks=1
-#SBATCH --time=01:01:00
+#SBATCH --time=04:00:00
 #SBATCH --output=./jobs/output/transfer_%A.out
 
 
@@ -15,7 +15,7 @@ module load Anaconda3/2023.07-2
 cd $HOME/thesis/elk-generalization/
 
 source activate elk-generalization
-model_names=("qm-pythia-410M" "qm-pythia-1B" "qm-pythia-1.4B")
+model_names=("qm-pythia-410M" "qm-pythia-1B" "qm-pythia-1.4B" "qm-pythia-2.8B" "qm-pythia-6.9B" "qm-pythia-12B")
 templates=("grader-first" "grader-last" "mixture")
 reporters=(ccs crc lr lr-on-pair lda mean-diff random)
 

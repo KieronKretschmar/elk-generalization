@@ -2,10 +2,11 @@
 
 #SBATCH --partition=gpu
 #SBATCH --gpus=1
-#SBATCH --job-name=TransferQuirkyPrompts
+#SBATCH --job-name=QPTransfer
 #SBATCH --ntasks=1
-#SBATCH --time=01:00:00
-#SBATCH --output=./jobs/output/transfer_quirky_prompts_%A.out
+#SBATCH --time=04:00:00
+#SBATCH --output=./jobs/output/qp_transfer_%A.out
+#SBATCH --exclude=gcn45 # this node seems buggy
 
 
 module purge
@@ -15,7 +16,7 @@ module load Anaconda3/2023.07-2
 cd $HOME/thesis/elk-generalization/
 
 source activate elk-generalization
-model_names=("pythia-410M" "pythia-1B" "pythia-1.4B")
+model_names=("pythia-410M" "pythia-1B" "pythia-1.4B"  "pythia-2.8B" "pythia-6.9B" "pythia-12B")
 
 # Vars for templates and prefixes
 templates=("grader-first" "grader-last" "mixture" "grader-first" "grader-last")
