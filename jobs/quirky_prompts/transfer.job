@@ -5,7 +5,7 @@
 #SBATCH --job-name=QPTransfer
 #SBATCH --ntasks=1
 #SBATCH --time=04:00:00
-#SBATCH --output=./jobs/output/qp_transfer_%A.out
+#SBATCH --output=./jobs/quirky_prompts/output/transfer_%A.out
 #SBATCH --exclude=gcn45 # this node seems buggy
 
 

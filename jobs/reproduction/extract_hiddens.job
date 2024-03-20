@@ -2,11 +2,10 @@
 
 #SBATCH --partition=gpu
 #SBATCH --gpus=1
-#SBATCH --job-name=QPExtractHiddens
+#SBATCH --job-name=ExtractHiddens
 #SBATCH --ntasks=1
 #SBATCH --time=04:00:00
-#SBATCH --output=./jobs/output/qp_extract_hiddens_%A.out
-#SBATCH --exclude=gcn45 # this node seems buggy
+#SBATCH --output=./jobs/reproduction/output/extract_hiddens_%A.out
 
 
 module purge
@@ -18,40 +17,33 @@ cd $HOME/thesis/elk-generalization/
 source activate elk-generalization
 
 # Vars
-model_names=("pythia-410M" "pythia-1B" "pythia-1.4B" "pythia-2.8B" "pythia-6.9B" "pythia-12B")
-
-# Vars for templates and prefixes
-templates=("grader-first" "grader-last" "mixture" "grader-first" "grader-last")
-prefixes=("zero-shot-v1" "zero-shot-v1" "zero-shot-v1" "few-shot-v1-grader-first" "few-shot-v1-grader-last")
+model_names=("qm-pythia-410M" "qm-pythia-1B" "qm-pythia-1.4B" "qm-pythia-2.8B" "qm-pythia-6.9B" "qm-pythia-12B" "qm-Mistral-7B-v0.1")
+templates=("grader-first" "grader-last" "mixture")
 
 # Vars for AE->BH
 characters=(Alice Bob)
 difficulties=(easy hard)
 max_examples=(4096 900) # Validating on validation or test only gives <1000 samples, but according to the paper we should test on 1024. Reducing evaluation to 900 to resolve.
-splits=(train test)
+splits=(train test)   
 
 for (( m=0; m<${#model_names[@]}; m++ )); do
     model_name=${model_names[m]}
 
     for (( t=0; t<${#templates[@]}; t++ )); do
         template=${templates[t]}
-        prefix=${prefixes[t]}
-
         for (( i=0; i<${#characters[@]}; i++ )); do
             character=${characters[i]}
             difficulty=${difficulties[i]}
             max_example=${max_examples[i]}
             split=${splits[i]}
             srun python -u elk_generalization/elk/extract_hiddens.py \
-                --model EleutherAI/$model_name \
+                --model EleutherAI/$model_name-$template \
                 --dataset EleutherAI/qm-$template \
-                --save-path ./experiments/quirky-prompts/$model_name-$template-$prefix/$character-$difficulty \
+                --save-path ./experiments/$model_name-$template/$character-$difficulty \
                 --character $character \
                 --difficulty $difficulty \
                 --splits $split \
-                --max-examples $max_example \
-                --prefix-path elk_generalization/elk/prefixes.json \
-                --prefix $prefix
+                --max-examples $max_example
         done
     done
 done
