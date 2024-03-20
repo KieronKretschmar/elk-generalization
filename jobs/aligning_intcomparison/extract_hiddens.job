@@ -1,0 +1,92 @@
+#!/bin/bash
+
+#SBATCH --partition=gpu
+#SBATCH --gpus=1
+#SBATCH --job-name=CDSExtractHiddens
+#SBATCH --ntasks=1
+#SBATCH --time=06:00:00
+#SBATCH --output=./jobs/aligning_intcomparison/output/extract_hiddens_%A.out
+#SBATCH --exclude=gcn45 # this node seems buggy
+
+module purge
+module load 2023
+module load Anaconda3/2023.07-2
+
+cd $HOME/thesis/elk-generalization/
+
+source activate elk-generalization
+
+data_dir="/scratch-shared/tmp.S8HctVrpjHkkretschmar"
+
+# Vars we loop through
+model_names=("pythia-410M" "pythia-1B" "pythia-1.4B" "pythia-2.8B" "pythia-6.9B" "pythia-12B")
+dataset_name="quirky_intcomparison"
+
+max_examples=(4096 1024)
+splits=(train test)
+
+# Extract hiddens for all configurations in which persona is introduced 
+filter_cols=("persona_introduced" "persona_responds" "objective_label" "quirky_label")
+persona_introduced_vals=(True)
+persona_responds_vals=(True False)
+objective_label_vals=(True False)
+quirky_label_vals=(True False)
+
+
+# for (( m=0; m<${#model_names[@]}; m++ )); do
+#     model_name=${model_names[m]}
+#     for (( i=0; i<${#splits[@]}; i++ )); do
+#         max_example=${max_examples[i]}
+#         split=${splits[i]}
+#         for (( i_pi=0; i_pi<${#persona_introduced_vals[@]}; i_pi++ )); do
+#             persona_introduced=${persona_introduced_vals[i_pi]}
+#             for (( i_pr=0; i_pr<${#persona_responds_vals[@]}; i_pr++ )); do
+#                 persona_responds=${persona_responds_vals[i_pr]}
+#                 for (( i_ol=0; i_ol<${#objective_label_vals[@]}; i_ol++ )); do
+#                     objective_label=${objective_label_vals[i_ol]}
+#                     for (( i_ql=0; i_ql<${#quirky_label_vals[@]}; i_ql++ )); do
+#                         quirky_label=${quirky_label_vals[i_ql]}
+
+#                         save_dir="pi=${persona_introduced}_pr=${persona_responds}_ol=${objective_label}_ql=${quirky_label}"
+
+#                         srun python -u elk_generalization/elk/extract_hiddens_adapted.py \
+#                             --model EleutherAI/$model_name \
+#                             --dataset $data_dir/experiments/$dataset_name \
+#                             --save-path $data_dir/experiments/$dataset_name/$model_name/$save_dir \
+#                             --max-examples $max_example \
+#                             --splits $split \
+#                             --label-cols "label" "objective_label" ${filter_cols[@]} \
+#                             --filter-cols ${filter_cols[@]} \
+#                             --filter-values ${persona_introduced} ${persona_responds} ${objective_label} ${quirky_label}
+#                     done
+#                 done
+#             done
+#         done
+#     done
+# done
+
+# Extract hiddens for all configurations in which persona is NOT introduced 
+# TODO: Currently not part of the base dataset
+# filter_cols_2=("persona_introduced" "objective_label")
+# persona_introduced=False
+# objective_label_vals=(True False)
+# for (( m=0; m<${#model_names[@]}; m++ )); do
+#     model_name=${model_names[m]}
+#     for (( i=0; i<${#splits[@]}; i++ )); do
+#         max_example=${max_examples[i]}
+#         split=${splits[i]}
+#         for (( i_ol=0; i_ol<${#objective_label_vals[@]}; i_ol++ )); do
+#             objective_label=${objective_label_vals[i_ol]}
+
+                # srun python -u elk_generalization/elk/extract_hiddens_adapted.py \
+                #     --model EleutherAI/$model_name \
+                #     --dataset $data_dir/experiments/$dataset_name \
+                #     --save-path $data_dir/experiments/$dataset_name/$save_dir \
+                #     --max-examples $max_example \
+                #     --splits $split \
+                #     --label-cols "label" "objective_label" ${filter_cols[@]} \
+                #     --filter-cols ${filter_cols_2[@]} \
+                #     --filter-values "${persona_introduced}" "${objective_label}"\ 
+#         done
+#     done
+# done

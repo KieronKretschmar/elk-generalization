@@ -1,0 +1,67 @@
+#!/bin/bash
+
+#SBATCH --partition=gpu
+#SBATCH --gpus=1
+#SBATCH --job-name=Summarize
+#SBATCH --ntasks=1
+#SBATCH --time=24:00:00
+#SBATCH --output=./jobs/aligning_intcomparison/output/summarize_%A.out
+#SBATCH --exclude=gcn45 # this node seems buggy
+
+
+module purge
+module load 2023
+module load Anaconda3/2023.07-2
+
+cd $HOME/thesis/elk-generalization/
+
+source activate elk-generalization
+
+data_dir="/scratch-shared/tmp.S8HctVrpjHkkretschmar"
+
+reporters=("lr" "mean-diff" "lda" "lr-on-pair" "ccs" "crc")
+reporters=("lr" "mean-diff" "lda" "ccs" "crc")
+
+# TRAIN / EVAL SPLIT SPECIFICATIONS
+# Vars for templates and prefixes
+label=objective_labels
+
+# We want a Delta-value for each combination of the following vars
+filter_cols=("persona_introduceds" "persona_respondss")
+persona_introduced_vals=(True)
+persona_responds_vals=(True False)
+
+
+# # OPTION 1: All aligned vs. all-but-one aligned
+# # Problem: Oppositely aligning for train is not possible
+# train_aligned=("objective_label" "quirky_label")
+# test_flip_alignment=("quirky_label")
+
+# train_aligned=("objective_label")
+# test_flip_alignment=("quirky_label")
+
+# # OPTION 2: Explicitly state alignments for train and test
+# train_pos_aligned=("objective_labels" "quirky_labels")
+# train_neg_aligned=()
+# # test_pos_aligned=("objective_label")
+# # test_neg_aligned=("quirky_label")
+
+# # training: predicting ol when ql is positively/not/negatively aligned
+# train_descriptors=("label=ol-pa_ol-na-filters_pi=True_pr=True" "label=ol-pa_ol_ql-na-filters_pi=True_pr=True" "label=ol-pa_ol-na_ql-filters_pi=True_pr=True")
+# # evaluating: predicting ol when ql is positively/not/negatively aligned
+# train_descriptors=("label=ol-pa_ol-na-filters_pi=True_pr=True" "label=ol-pa_ol_ql-na-filters_pi=True_pr=True" "label=ol-pa_ol-na_ql-filters_pi=True_pr=True")
+
+# echo $data_dir/experiments/$experiment_name/$dataset_name/$model_name/train
+# for (( i_pi=0; i_pi<${#persona_introduced_vals[@]}; i_pi++ )); do
+#     persona_introduced=${persona_introduced_vals[i_pi]}
+#     for (( i_pr=0; i_pr<${#persona_responds_vals[@]}; i_pr++ )); do
+#         persona_responds=${persona_responds_vals[i_pr]}
+
+# Summarize quirky-prompts
+srun python -u elk_generalization/elk/summarize_transfer_results_adapted.py \
+    --models "pythia-410M" "pythia-1B" "pythia-1.4B" "pythia-2.8B" "pythia-6.9B" "pythia-12B"\
+    --root-dir $data_dir/experiments/quirky_intcomparison \
+    --reporters ${reporters[@]} \
+    --metric auroc \
+    --label-col objective_labels \
+    --save-csv-path $data_dir/experiments/quirky_intcomparison/summary_aligning_1.csv
