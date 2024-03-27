@@ -27,7 +27,7 @@ def encode_choice(text, tokenizer):
 
 
 if __name__ == "__main__":
-    debug = True
+    debug = False
     if debug:
         print("DEBUGGING WITH HARDCODED ARGS!")
         model = "pythia-410M"
