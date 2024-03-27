@@ -26,13 +26,16 @@ class IntComparisonDataset(QuirkyDataset):
             max_digits: int = 4, 
             base_examples: int = 500_000, 
             err_symbols: list[str] = ('<', '<=', '=', '>=', '>'),
+            fixed_template = None,
             **kwargs):
         self.max_digits = max_digits
         self.max_int = 10 ** (self.max_digits + 1) - 1 # sampled_int <= max_int
         self.base_examples = base_examples
+        self.fixed_template = fixed_template
 
         # For each sample we randomly draw an operator from this list and have Bob systematically 
         # assume that it describes the relationship between first and second number
+        # TODO: Consider mixing multiple templates to prevent solving the task using simple, token-level heuristics
         self.err_symbols = err_symbols
         self.persona_intro_template = "Whenever {name} compares 2 numbers, {name} believes the first one is {quirk_text} the second one."
         self.persona_responds_template = " According to {name}, the statement {int1}{task_operator}{int2} is"
@@ -208,6 +211,10 @@ class IntComparisonDataset(QuirkyDataset):
         return results
     
     def get_template(self, persona_introduced, persona_responds):
+        if self.fixed_template:
+            # print("Using fixed template. The options persona_introduced and persona_responds are not used apply.")
+            return self.fixed_template
+        
         assert persona_introduced or not persona_responds, "A persona can't respond without being introduced."
 
         template = ""
