@@ -126,12 +126,11 @@ class IntComparisonDataset(QuirkyDataset):
                     raise NotImplementedError(f"Unknown operator {task_operator}")
                 
             # Sample quirk (~systematic error) according to quirky_label
-            correct_operators = self._operation(int1, int2)
-            wrong_operators = [o for o in self.operators if o not in correct_operators]
+            # Choose a quirk depending on the task_operator that satisfies quirky_label
             if quirky_label == True:
-                quirk = random.choice(correct_operators)
+                quirk = task_operator
             else:
-                quirk = random.choice(wrong_operators)
+                quirk = "<" if ">" in task_operator else ">"
 
             # Sample random name
             name = random.choice(self.names)
