@@ -111,8 +111,8 @@ if __name__ == "__main__":
         tokenizer = AutoTokenizer.from_pretrained(model_name)
 
         
-        for i, template in enumerate(templates):
-            model_template_dir = args.save_path / model_name / f"template_{i}"
+        for i_template, template in enumerate(templates):
+            model_template_dir = args.save_path / model_name / f"template_{i_template}"
             model_template_dir.mkdir(parents=True, exist_ok=True)
             # skip if the results for this template already exist
             if (model_template_dir / "hiddens.pt").exists():
@@ -224,20 +224,21 @@ if __name__ == "__main__":
 
             # Summarize model behavior with the template
             log_odds = log_odds.cpu()
-            df.loc[(model_name, i), "template"] = template
-            df.loc[(model_name, i), "label_accuracy"] = accuracy_score(dataset["label"], log_odds > 0)
-            df.loc[(model_name, i), "label_auroc"] = roc_auc_score(dataset["label"], log_odds)
-            df.loc[(model_name, i), "ol_accuracy"] = accuracy_score(dataset["objective_label"], log_odds > 0)
-            df.loc[(model_name, i), "ol_auroc"] = roc_auc_score(dataset["objective_label"], log_odds)
-            df.loc[(model_name, i), "ql_accuracy"] = accuracy_score(dataset["quirky_label"], log_odds > 0)
-            df.loc[(model_name, i), "ql_auroc"] = roc_auc_score(dataset["quirky_label"], log_odds)
-            df.loc[(model_name, i), "positive_predictions"] = (log_odds > 0).float().mean().item()
-            df.loc[(model_name, i), "log_odds_mean"] = log_odds.mean().item()
-            df.loc[(model_name, i), "balance_label"] = np.mean(dataset["label"])
-            df.loc[(model_name, i), "balance_ol"] = np.mean(dataset["objective_label"])
-            df.loc[(model_name, i), "balance_ql"] = np.mean(dataset["quirky_label"])
+            df.loc[(model_name, i_template), "template"] = template
+            df.loc[(model_name, i_template), "label_accuracy"] = accuracy_score(dataset["label"], log_odds > 0)
+            df.loc[(model_name, i_template), "label_auroc"] = roc_auc_score(dataset["label"], log_odds)
+            df.loc[(model_name, i_template), "ol_accuracy"] = accuracy_score(dataset["objective_label"], log_odds > 0)
+            df.loc[(model_name, i_template), "ol_auroc"] = roc_auc_score(dataset["objective_label"], log_odds)
+            df.loc[(model_name, i_template), "ql_accuracy"] = accuracy_score(dataset["quirky_label"], log_odds > 0)
+            df.loc[(model_name, i_template), "ql_auroc"] = roc_auc_score(dataset["quirky_label"], log_odds)
+            df.loc[(model_name, i_template), "positive_predictions"] = (log_odds > 0).float().mean().item()
+            df.loc[(model_name, i_template), "log_odds_mean"] = log_odds.mean().item()
+            df.loc[(model_name, i_template), "balance_label"] = np.mean(dataset["label"])
+            df.loc[(model_name, i_template), "balance_ol"] = np.mean(dataset["objective_label"])
+            df.loc[(model_name, i_template), "balance_ql"] = np.mean(dataset["quirky_label"])
 
-            print(f"Finished run {model_name}, {i}")
+            print(f"Finished run {model_name}, {i_template}. Results:")
+            print(df.loc[(model_name, i_template)])
 
         print(f"Finished all templates for {model_name}. Saving...")
         df.to_csv(args.save_path / "template_comparison.csv")
