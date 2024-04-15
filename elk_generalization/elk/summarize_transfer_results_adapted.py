@@ -175,7 +175,9 @@ if __name__ == "__main__":
                         ]
                     )
                     eil = earliest_informative_layer_index(reporter_results_by_layer_df, args.metric)
-                    df.loc[(model, reporter, train_desc), test_desc] = reporter_results_by_layer_df.loc[eil, args.metric]
+                    df.loc[(model, reporter, train_desc), test_desc + "_eil"] = reporter_results_by_layer_df.loc[eil, args.metric]
+                    for i, layer_log_odds in enumerate(aggs["reporter_log_odds"]):
+                        df.loc[(model, reporter, train_desc), test_desc + "_layer_" + i] = reporter_results_by_layer_df[i, args.metric]
 
                 # Compute average over all reporters before adding lm's average
                 df.loc[(model, "avg", train_desc), test_desc] = df.loc[pd.IndexSlice[model, args.reporters, train_desc], test_desc].mean()
