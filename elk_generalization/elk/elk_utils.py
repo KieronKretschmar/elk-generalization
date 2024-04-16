@@ -124,6 +124,28 @@ class SplitConfig():
         valid_cfgs = [cfg for cfg in segment_configs if self.segment_is_valid(cfg)]
         return valid_cfgs
     
+    def get_alignment(self, key1, key2):
+        """Determines whether and how key1 and key2 are aligned with each other.
+        Returns 1 if positively aligned, -1 if negatively aligned, and 0 if neither. 
+        """
+        if key1 in self.positively_aligned_keys:
+            align1 = 1
+        elif key1 in self.negatively_aligned_keys:
+            align1 = -1
+        else:
+            align1 = 0
+
+
+        if key2 in self.positively_aligned_keys:
+            align2 = 1
+        elif key2 in self.negatively_aligned_keys:
+            align2 = -1
+        else:
+            align2 = 0
+
+        return align1 * align2
+
+    
 class SegmentConfig():
     """Defines a segment of a dataset for which certain labels are constant.
     """
