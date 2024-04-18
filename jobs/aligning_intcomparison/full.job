@@ -17,6 +17,7 @@ cd $HOME/thesis/elk-generalization/
 source activate elk-generalization
 
 data_dir="/scratch-shared/tmp.S8HctVrpjHkkretschmar"
+export HF_HOME=$data_dir/hf_cache
 
 # Vars we loop through
 model_names=("pythia-410M" "pythia-1B" "pythia-1.4B" "pythia-2.8B" "pythia-6.9B" "pythia-12B")
