@@ -1,6 +1,7 @@
 import torch
 from distutils.util import strtobool
 
+# Helpers for align transfer experiments
 
 key_to_column = {
     "pi": "persona_introduceds",
@@ -183,6 +184,7 @@ class SegmentConfig():
 
 
 def aggregate_segments(paths, label_cols, reporter, device, data_split, log_odds_split_descriptor=None):
+    """Aggregates segments for transfer_align experiments"""
     out = {}
     for i, path in enumerate(paths):
         path = path / data_split
@@ -219,3 +221,132 @@ def aggregate_segments(paths, label_cols, reporter, device, data_split, log_odds
                 out[label_col] = torch.cat([out[label_col], labels])
         
     return out
+
+# Helpers for diversify experiments
+class DiversifyTrainingConfig():    
+    
+    @classmethod
+    def from_descriptor(cls, descriptor):
+        # Split the string into key-value pairs
+        datasets = descriptor.replace("-", "/").split('_')[1:]
+        return cls(training_datasets=datasets)
+
+    def __init__(self, training_datasets) -> None:
+        self.training_datasets = training_datasets
+
+    def descriptor(self):
+        """Unique string identifying the training directories used
+
+        Returns:
+            str: identifier
+        """
+        desc = "trained-on_"
+        desc += "_".join(sorted(self.training_datasets)).replace("/","-")
+        return desc
+
+def aggregate_datasets(paths, label_cols, device, samples_per_dataset=None, contrast_norm=None, reporters_for_log_odds=[]):
+    """Aggregates datasets for diversity experiments"""
+    out = {}
+    for i, path in enumerate(paths):
+        train_hiddens = torch.load(path / "hiddens.pt", map_location=torch.device(device))
+        train_ccs_hiddens = torch.load(path / "ccs_hiddens.pt", map_location=torch.device(device))
+
+        # If a contrast_norm is specified, we normalize each dataset individually
+        if contrast_norm:
+            for layer in range(len(train_ccs_hiddens)):
+                # Unsqueeze+Squeeze because normalize_ccs_hiddens expects variants dimension
+                normalized_ccs_hiddens, _ = normalize_ccs_hiddens(train_ccs_hiddens[layer].unsqueeze(1), norm=contrast_norm)
+                train_ccs_hiddens[layer] = normalized_ccs_hiddens.squeeze(1)
+        train_n = train_hiddens[0].shape[0]
+        d = train_hiddens[0].shape[-1]
+        assert all(
+            h.shape[0] == train_n for h in train_hiddens
+        ), "Mismatched number of samples"
+        assert all(h.shape[-1] == d for h in train_hiddens), "Mismatched hidden size"
+
+        # Make sure the correct number of samples is selected
+        if samples_per_dataset:
+            assert samples_per_dataset <= train_n, f"Only {train_n} samples available for {path}, but {samples_per_dataset} are required."
+            indices = torch.randperm(train_n)[:samples_per_dataset]
+        else:
+            indices = torch.arange(train_n)
+        train_hiddens = [h[indices] for h in train_hiddens]
+        train_ccs_hiddens = [h[indices] for h in train_ccs_hiddens]
+
+        # Extract log_odds for each reporter (only relevant for evaluation)
+        log_odds = {}
+        for reporter in reporters_for_log_odds:
+            log_odds_path = path / f"{reporter}_log_odds.pt"
+            log_odds[reporter] = torch.load(log_odds_path, map_location=torch.device(device))[indices]
+
+        # Extract labels
+        for label_col in label_cols:
+            labels = torch.load(path / f"{label_col}.pt", map_location=torch.device(device))[indices].int()
+            assert len(labels) == train_hiddens[0].shape[0], "Mismatched number of labels"
+
+        # Concatenate data with data from previous datasets eval_paths
+        if i==0:
+            out["hiddens"] = train_hiddens
+            out["ccs_hiddens"] = train_ccs_hiddens
+            for reporter in reporters_for_log_odds:
+                out[f"{reporter}_log_odds"] = log_odds[reporter]
+            for label_col in label_cols:
+                out[label_col] = labels
+        else:
+            out["hiddens"] = [torch.cat([out["hiddens"][i], train_hiddens[i]]) for i in range(len(train_hiddens))]
+            out["ccs_hiddens"] = [torch.cat([out["ccs_hiddens"][i], train_ccs_hiddens[i]]) for i in range(len(train_ccs_hiddens))]
+            for reporter in reporters_for_log_odds:
+                out[f"{reporter}_log_odds"] = torch.cat([out[f"{reporter}_log_odds"], log_odds[reporter]], axis=1)
+            for label_col in label_cols:
+                out[label_col] = torch.cat([out[label_col], labels])
+        
+    return out
+
+
+def normalize_ccs_hiddens(ccs_hiddens, norm):
+    """Normalizes hidden states for both templates individually.
+
+    Args:
+        ccs_hiddens (tensor): Tensor of shape (samples, v, 2, neurons), where the axis of dimension 2 is for pos/neg templates 
+        norm (str): Name of the norm to be used
+
+    Raises:
+        NotImplementedError: Unknown norm.
+
+    Returns:
+        tensor, Module: The normalized ccs_hiddens with the original shape and the normalization module.
+    """
+    from burns_norm import BurnsNorm
+    from concept_erasure import LeaceFitter
+    assert ccs_hiddens.dim() == 4, "Expecting ccs_hiddens to be a 4-dimensional tensor of shape (samples, v, 2, neurons)."
+    assert ccs_hiddens.shape[2] == 2, "Expecting 2 templates on axis=1."
+
+    x_neg, x_pos = ccs_hiddens.unbind(2)
+    # One-hot indicators for each prompt template
+    n, v, d = x_neg.shape
+    prompt_ids = torch.eye(v, device=x_neg.device).expand(n, -1, -1)
+    if norm == "burns":
+        norm = BurnsNorm()
+    elif norm == "meanonly":
+        norm = BurnsNorm(scale=False)
+    elif norm == "leace":
+        fitter = LeaceFitter(d, 2 * v, dtype=x_neg.dtype, device=x_neg.device)
+        fitter.update(
+            x=x_neg,
+            # Independent indicator for each (template, pseudo-label) pair
+            z=torch.cat([torch.zeros_like(prompt_ids), prompt_ids], dim=-1),
+        )
+        fitter.update(
+            x=x_pos,
+            # Independent indicator for each (template, pseudo-label) pair
+            z=torch.cat([prompt_ids, torch.zeros_like(prompt_ids)], dim=-1),
+        )
+        norm = fitter.eraser
+    elif norm == None:
+        norm = torch.nn.Identity()
+    else:
+        raise NotImplementedError(f"Unknown norm: {norm}")
+    
+    x_neg, x_pos = norm(x_neg), norm(x_pos)
+    normalized_ccs_hiddens = torch.stack((x_neg, x_pos), dim=2)
+    return normalized_ccs_hiddens, norm
