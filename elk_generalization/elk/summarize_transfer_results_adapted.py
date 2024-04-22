@@ -155,8 +155,11 @@ if __name__ == "__main__":
                     for i, layer_log_odds in enumerate(aggs["reporter_log_odds"]):
                         df.loc[(model, reporter, train_desc), test_desc + "_layer_" + str(i)] = reporter_results_by_layer_df.loc[i, args.metric]
 
-                # Compute average over all reporters before adding lm's average
-                df.loc[(model, "avg", train_desc), test_desc] = df.loc[pd.IndexSlice[model, args.reporters, train_desc], test_desc].mean()
+                # Compute average over all reporters
+                df.loc[(model, "avg", train_desc), test_desc + "_eil"] = df.loc[pd.IndexSlice[model, args.reporters, train_desc], test_desc + "_eil"].mean()
+                for i, _ in enumerate(aggs["reporter_log_odds"]):
+                    df.loc[(model, "avg", train_desc), test_desc + "_layer_" + str(i)] = df.loc[pd.IndexSlice[model, args.reporters, train_desc], test_desc + "_layer_" + str(i)].mean()
+
                 df.loc[(model, "lm", train_desc), test_desc] = metric_fn(
                     aggs[args.label_col], aggs["lm_log_odds"]
                 )
