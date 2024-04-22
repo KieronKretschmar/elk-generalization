@@ -15,6 +15,7 @@ module load Anaconda3/2023.07-2
 cd $HOME/thesis/elk-generalization/
 
 source activate elk-generalization
+export HF_HOME=$data_dir/hf_cache
 
 data_dir="/scratch-shared/tmp.S8HctVrpjHkkretschmar"
 
