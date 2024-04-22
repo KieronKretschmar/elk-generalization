@@ -135,30 +135,6 @@ if __name__ == "__main__":
                         log_odds_split_descriptor=train_desc
                         )
 
-                    # try:
-                    # # reporter_log_odds = (
-                    # #     torch.load(results_dir / f"{fr}_{reporter}_log_odds.pt", map_location="cpu")
-                    # #     .float()
-                    # #     .numpy()
-                    # # )
-                    # # other_cols = {
-                    # #     "lm": torch.load(results_dir / "lm_log_odds.pt", map_location="cpu")
-                    # #     .float()
-                    # #     .numpy(),
-                    # #     "label": torch.load(results_dir / "labels.pt", map_location="cpu").int().numpy(),
-                    # #     "alice_label": torch.load(results_dir / "alice_labels.pt", map_location="cpu")
-                    # #     .int()
-                    # #     .numpy(),
-                    # #     "bob_label": torch.load(results_dir / "bob_labels.pt", map_location="cpu")
-                    # #     .int()
-                    # #     .numpy(),
-                    # # }
-                    # except FileNotFoundError:
-                    #     print(
-                    #         f"Skipping {results_dir} because it doesn't exist or is incomplete"
-                    #     )
-                    #     continue
-
                     # results_dfs[(model, reporter, train_desc, test_desc)] = 
                     reporter_results_by_layer_df = pd.DataFrame(
                         [
@@ -177,41 +153,13 @@ if __name__ == "__main__":
                     eil = earliest_informative_layer_index(reporter_results_by_layer_df, args.metric)
                     df.loc[(model, reporter, train_desc), test_desc + "_eil"] = reporter_results_by_layer_df.loc[eil, args.metric]
                     for i, layer_log_odds in enumerate(aggs["reporter_log_odds"]):
-                        df.loc[(model, reporter, train_desc), test_desc + "_layer_" + i] = reporter_results_by_layer_df[i, args.metric]
+                        df.loc[(model, reporter, train_desc), test_desc + "_layer_" + str(i)] = reporter_results_by_layer_df.loc[i, args.metric]
 
                 # Compute average over all reporters before adding lm's average
                 df.loc[(model, "avg", train_desc), test_desc] = df.loc[pd.IndexSlice[model, args.reporters, train_desc], test_desc].mean()
                 df.loc[(model, "lm", train_desc), test_desc] = metric_fn(
                     aggs[args.label_col], aggs["lm_log_odds"]
                 )
-
-                # results_dfs[(model, "lm", train_desc, test_desc)] = metric_fn(
-                #     aggs[args.label_col], aggs["lm_log_odds"]
-                # )
-
-                
-
-            # # average these results over models and templates
-            # layer_fracs, avg_reporter_results = interpolate(
-            #     layers_all=[v["layer"].values for v in results_dfs.values()],
-            #     results_all=[v[metric].values for v in results_dfs.values()],
-            # )
-
-            # avg_lm_result = float(np.mean(list(lm_results.values())))
-            # avg_reporter_results = pd.DataFrame(
-            #     {
-            #         "layer_frac": layer_fracs,
-            #         metric: avg_reporter_results,
-            #     }
-            # )
-            # return avg_reporter_results, results_dfs, avg_lm_result, lm_results
-
-        # END viz
-
-            
-    # # lm_results are independent of the reporter, so we use the last reporter's lm_results
-    # for (model, template), lm_result in lm_results.items():
-    #     df.loc[("lm", template), model] = lm_result
 
     # Display the resulting DataFrame
     pd.set_option('display.float_format', '{:.2f}'.format)
