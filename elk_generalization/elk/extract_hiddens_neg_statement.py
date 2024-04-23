@@ -20,13 +20,13 @@ def encode_choice(text, tokenizer):
 
 
 if __name__ == "__main__":
-    debug = True
+    debug = False
     if debug:
         print("DEBUGGING WITH HARDCODED ARGS!")
         args = Namespace(
-            model = "EleutherAI/pythia-70M", 
-            dataset = Path(r".\experiments\got\cities"),
-            save_path = Path(r".\experiments\neg_extract"),
+            models = ["EleutherAI/pythia-70M"], 
+            datasets = [r"got\cities"],
+            data_dir = Path(r".\experiments\neg_extract"),
             max_examples = [40, 10],
             splits = ["train", "test"],
             label_cols = ["label"],
@@ -35,8 +35,21 @@ if __name__ == "__main__":
             )
     else:
         parser = ArgumentParser(description="Process and save model hidden states.")
-        parser.add_argument("--model", type=str, help="Name of the Hugging Face model")
-        parser.add_argument("--dataset", type=str, help="Name of the Hugging Face dataset")
+        parser.add_argument(
+            "--models", 
+            type=str, 
+            nargs="+",
+            help="Names of the Hugging Face models"
+        )    
+        parser.add_argument(
+            "--data-dir", type=str, help="Path to the directory where extracted data is to be saved"
+        )
+        parser.add_argument(
+            "--datasets", 
+            type=str, 
+            nargs="+",
+            help="Names of the Hugging Face datasets"
+        )
         parser.add_argument("--save-path", type=Path, help="Path to save the hidden states")
         parser.add_argument(
             "--max-examples",
@@ -58,114 +71,112 @@ if __name__ == "__main__":
             help="Columns of the dataset that contain labels we wish to save",
             default=[],
         )
-        parser.add_argument(
-            "--hf-cache-dir",
-            type=str,
-            help="Directory to be used by huggingface cache.",
-            default=None
-        )
         args = parser.parse_args()
 
-    # check if all the results already exist
-    if all((args.save_path / split / "hiddens.pt").exists() for split in args.splits):
-        print(f"Hiddens already exist at {args.save_path}")
-        exit()
+    print(args)
+    for model_name in args.models:
+        model = AutoModelForCausalLM.from_pretrained(
+            model_name,
+            device_map={"": torch.cuda.current_device()},
+            torch_dtype="auto",
+        )
+        tokenizer = AutoTokenizer.from_pretrained(model_name)
 
-    model = AutoModelForCausalLM.from_pretrained(
-        args.model,
-        device_map={"": torch.cuda.current_device()},
-        torch_dtype="auto",
-    )
-    tokenizer = AutoTokenizer.from_pretrained(args.model)
-      
-    assert len(args.max_examples) == len(args.splits)
-    for split, max_examples in zip(args.splits, args.max_examples):
-        root = args.save_path / split
-        root.mkdir(parents=True, exist_ok=True)
-        # skip if the results for this split already exist
-        if (root / "hiddens.pt").exists():
-            print(f"Skipping because '{root / 'hiddens.pt'}' already exists")
-            continue
+        for dataset_name in args.datasets:
+            print(f"Starting {model_name=} on {dataset_name=}...")
+            dataset_path = Path(args.data_dir) / dataset_name
 
-        print(f"Processing '{split}' split...")
 
-        if Path(args.dataset).exists():
-            print(f"Trying to load {args.dataset} from disk...")
-            dataset = load_from_disk(args.dataset)[split].shuffle()
-        else:
-            print(f"Trying to load {args.dataset} from hub...")
-            dataset = load_dataset(args.dataset, split=split).shuffle()
-        assert isinstance(dataset, Dataset)
+            for split, max_examples in zip(args.splits, args.max_examples):
+                root = Path(args.data_dir) / dataset_name / model_name / split
+                # check if all the results already exist
+                if (root / "hiddens.pt").exists():
+                    print(f"Hiddens already exist at {root}")
+                    continue
+                
+                assert len(args.max_examples) == len(args.splits)
 
-        dataset = dataset.select(range(max_examples))
+                root.mkdir(parents=True, exist_ok=True)
 
-        buffers = [
-            torch.full(
-                [len(dataset), model.config.hidden_size],
-                torch.nan,
-                device=model.device,
-                dtype=model.dtype,
-            )
-            for _ in range(model.config.num_hidden_layers)
-        ]
-        neg_buffers = [
-            torch.full(
-                [len(dataset), model.config.hidden_size],
-                torch.nan,
-                device=model.device,
-                dtype=model.dtype,
-            )
-            for _ in range(model.config.num_hidden_layers)
-        ]
-        ccs_buffers = [
-            torch.full(
-                [len(dataset), 2, model.config.hidden_size],
-                torch.nan,
-                device=model.device,
-                dtype=model.dtype,
-            )
-            for _ in range(model.config.num_hidden_layers)
-        ]
+                print(f"Processing '{split}' split...")
+                if Path(dataset_path).exists():
+                    print(f"Trying to load {dataset_path} from disk...")
+                    dataset = load_from_disk(dataset_path)[split].shuffle()
+                # else:
+                #     print(f"Trying to load {dataset_path} from hub...")
+                #     dataset = load_dataset(dataset_path, split=split).shuffle()
+                assert isinstance(dataset, Dataset)
 
-        for i, record in tqdm(enumerate(dataset), total=len(dataset)):
-            assert isinstance(record, dict)
+                dataset = dataset.select(range(min(max_examples, len(dataset))))
 
-            prompt = tokenizer.encode(record["statement"])
-            neg_prompt = tokenizer.encode(record["neg_statement"])
+                buffers = [
+                    torch.full(
+                        [len(dataset), model.config.hidden_size],
+                        torch.nan,
+                        device=model.device,
+                        dtype=model.dtype,
+                    )
+                    for _ in range(model.config.num_hidden_layers)
+                ]
+                neg_buffers = [
+                    torch.full(
+                        [len(dataset), model.config.hidden_size],
+                        torch.nan,
+                        device=model.device,
+                        dtype=model.dtype,
+                    )
+                    for _ in range(model.config.num_hidden_layers)
+                ]
+                ccs_buffers = [
+                    torch.full(
+                        [len(dataset), 2, model.config.hidden_size],
+                        torch.nan,
+                        device=model.device,
+                        dtype=model.dtype,
+                    )
+                    for _ in range(model.config.num_hidden_layers)
+                ]
 
-            with torch.inference_mode():
-                outputs = model(
-                    torch.as_tensor([prompt], device=model.device),
-                    output_hidden_states=True,
-                    use_cache=True,
-                )
-                neg_outputs = model(
-                    torch.as_tensor([neg_prompt], device=model.device),
-                    output_hidden_states=True,
-                    use_cache=True,
-                )
-                ccs_outputs = [outputs.hidden_states[1:], neg_outputs.hidden_states[1:]]
+                for i, record in tqdm(enumerate(dataset), total=len(dataset), mininterval=10):
+                    assert isinstance(record, dict)
 
-                for j, (state1, state2) in enumerate(zip(*ccs_outputs)):
-                    # Store hiddens for only prompt and last token
-                    ccs_buffers[j][i, 0] = state1[0][-1] 
-                    ccs_buffers[j][i, 1] = state2[0][-1]
+                    prompt = tokenizer.encode(record["statement"])
+                    neg_prompt = tokenizer.encode(record["neg_statement"])
 
-                # Extract hidden states of the last token in each layer for the non-negated statement for which the label is accurate
-                for j, state in enumerate(outputs.hidden_states[1:]):
-                    buffers[j][i] = state[0, -1, :]
-                # and for negated statement for which the label is wrong
-                for j, state in enumerate(neg_outputs.hidden_states[1:]):
-                    neg_buffers[j][i] = state[0, -1, :]
+                    with torch.inference_mode():
+                        outputs = model(
+                            torch.as_tensor([prompt], device=model.device),
+                            output_hidden_states=True,
+                            use_cache=True,
+                        )
+                        neg_outputs = model(
+                            torch.as_tensor([neg_prompt], device=model.device),
+                            output_hidden_states=True,
+                            use_cache=True,
+                        )
+                        ccs_outputs = [outputs.hidden_states[1:], neg_outputs.hidden_states[1:]]
 
-        # Sanity check
-        assert all(buffer.isfinite().all() for buffer in buffers)
-        assert all(buffer.isfinite().all() for buffer in ccs_buffers)
+                        for j, (state1, state2) in enumerate(zip(*ccs_outputs)):
+                            # Store hiddens for only prompt and last token
+                            ccs_buffers[j][i, 0] = state1[0][-1] 
+                            ccs_buffers[j][i, 1] = state2[0][-1]
 
-        # Save results to disk for later
-        for label_col in args.label_cols:
-            labels = torch.as_tensor(dataset[label_col], dtype=torch.int32)
-            torch.save(labels, root / f"{label_col}s.pt")
-        torch.save(buffers, root / "hiddens.pt")
-        torch.save(neg_buffers, root / "neg_hiddens.pt")
-        torch.save(ccs_buffers, root / "ccs_hiddens.pt")
+                        # Extract hidden states of the last token in each layer for the non-negated statement for which the label is accurate
+                        for j, state in enumerate(outputs.hidden_states[1:]):
+                            buffers[j][i] = state[0, -1, :]
+                        # and for negated statement for which the label is wrong
+                        for j, state in enumerate(neg_outputs.hidden_states[1:]):
+                            neg_buffers[j][i] = state[0, -1, :]
+
+                # Sanity check
+                assert all(buffer.isfinite().all() for buffer in buffers)
+                assert all(buffer.isfinite().all() for buffer in ccs_buffers)
+
+                # Save results to disk for later
+                for label_col in args.label_cols:
+                    labels = torch.as_tensor(dataset[label_col], dtype=torch.int32)
+                    torch.save(labels, root / f"{label_col}s.pt")
+                torch.save(buffers, root / "hiddens.pt")
+                torch.save(neg_buffers, root / "neg_hiddens.pt")
+                torch.save(ccs_buffers, root / "ccs_hiddens.pt")
+                print(f"Finished storing hiddens for {model_name=} on {dataset_name=}.")
