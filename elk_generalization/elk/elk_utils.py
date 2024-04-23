@@ -232,7 +232,8 @@ class DiversifyTrainingConfig():
         return cls(training_datasets=datasets)
 
     def __init__(self, training_datasets) -> None:
-        self.training_datasets = training_datasets
+        # Datasets used for training in alphabetical order
+        self.training_datasets = sorted(training_datasets)
 
     def descriptor(self):
         """Unique string identifying the training directories used
@@ -241,7 +242,7 @@ class DiversifyTrainingConfig():
             str: identifier
         """
         desc = "trained-on_"
-        desc += "_".join(sorted(self.training_datasets)).replace("/","-")
+        desc += "_".join(self.training_datasets).replace("/","-")
         return desc
 
 def aggregate_datasets(paths, label_cols, device, samples_per_dataset=None, contrast_norm=None, reporters_for_log_odds=[]):

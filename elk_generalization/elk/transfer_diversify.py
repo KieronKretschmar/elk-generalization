@@ -137,8 +137,12 @@ if __name__ == "__main__":
             for reporter_name in args.reporters:
                 # Skip if results already exist
                 if not args.prevent_skip:
+                    if reporter_name == "random":
+                        results_fname = f"{reporter_name}_aucs_against_labels.pt"
+                    else:
+                        results_fname = f"{reporter_name}_log_odds.pt"
                     # Expected (results) data structure: data_dir/<eval_dataset>/<model>/<train|test>/<training_identifier>/<reporter>_log_odds.pt
-                    result_files = [data_dir / eval_dataset / model / "test" / training_identifier / f"{reporter_name}_log_odds.pt" for eval_dataset in args.eval_datasets]
+                    result_files = [data_dir / eval_dataset / model / "test" / training_identifier / results_fname for eval_dataset in args.eval_datasets]
                     if all([result_file.exists() for result_file in result_files]):
                         print(f"Skipping run for {training_identifier=} and {reporter_name=} as data already exists.")
                         continue
