@@ -106,7 +106,7 @@ if __name__ == "__main__":
     for model in args.models:
         # Iterate through all combinations of training datasets of the given length
         for training_datasets in combinations(args.training_datasets, r=args.n_train_datasets):
-            training_cfg = DiversifyTrainingConfig(training_datasets)
+            training_cfg = DiversifyTrainingConfig(training_datasets, n_training_samples=args.train_examples)
             training_identifier = training_cfg.descriptor()
 
             # Aggregate hiddens, ccs_hiddens and labels over all training directories

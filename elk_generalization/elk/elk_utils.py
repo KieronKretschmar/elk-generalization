@@ -227,13 +227,15 @@ class DiversifyTrainingConfig():
     
     @classmethod
     def from_descriptor(cls, descriptor):
-        # Split the string into key-value pairs
-        datasets = descriptor.replace("-", "/").split('_')[1:]
-        return cls(training_datasets=datasets)
+        segments = descriptor.replace("-", "/").split('_')
+        n_training_samples = int(segments[1].split("=")[1])
+        datasets = segments[2:]
+        return cls(training_datasets=datasets, n_training_samples=n_training_samples)
 
-    def __init__(self, training_datasets) -> None:
+    def __init__(self, training_datasets, n_training_samples) -> None:
         # Datasets used for training in alphabetical order
         self.training_datasets = sorted(training_datasets)
+        self.n_training_samples = n_training_samples
 
     def descriptor(self):
         """Unique string identifying the training directories used
@@ -241,7 +243,7 @@ class DiversifyTrainingConfig():
         Returns:
             str: identifier
         """
-        desc = "trained-on_"
+        desc = f"trained-on_n={self.n_training_samples}_"
         desc += "_".join(self.training_datasets).replace("/","-")
         return desc
 

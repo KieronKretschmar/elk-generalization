@@ -1,0 +1,74 @@
+#!/bin/bash
+
+#SBATCH --partition=gpu
+#SBATCH --gpus=1
+#SBATCH --job-name=DiversifyFull
+#SBATCH --ntasks=1
+#SBATCH --time=06:00:00
+#SBATCH --output=./jobs/diversify/output/full_%A.out
+#SBATCH --exclude=gcn45 # this node seems buggy
+
+module purge
+module load 2023
+module load Anaconda3/2023.07-2
+
+cd $HOME/thesis/elk-generalization/
+
+source activate elk-generalization
+
+data_dir="/scratch-shared/tmp.S8HctVrpjHkkretschmar"
+export HF_HOME=$data_dir/hf_cache
+
+# General vars
+model_names=("EleutherAI/pythia-410M" "EleutherAI/pythia-1B" "EleutherAI/pythia-1.4B" "EleutherAI/pythia-2.8B" "EleutherAI/pythia-6.9B" "EleutherAI/pythia-12B" "mistralai/Mistral-7B-v0.1" "meta-llama/Llama-2-7b-hf" "meta-llama/Llama-2-13b-hf")
+reporters=(ccs crc lr lr-on-pair lda mean-diff random)
+neg_dataset_names=(got/cities got/larger_than got/sp_en_trans)
+train_datasets=(got/cities got/larger_than got/sp_en_trans) # got/sp_en_trans only has 283 training samples
+eval_datasets=(got/cities got/larger_than got/sp_en_trans)
+
+# Extract - neg datasets
+max_examples=(4096 1024)
+splits=(train test)
+
+for (( i=0; i<${#splits[@]}; i++ )); do
+    max_example=${max_examples[i]}
+    split=${splits[i]}
+
+    srun python -u elk_generalization/elk/extract_hiddens_neg_statement.py \
+        --models ${model_names[@]} \
+        --data-dir $data_dir/experiments/diversify \
+        --datasets ${neg_dataset_names[@]} \
+        --max-examples $max_example \
+        --splits $split \
+        --label-cols "label"
+done
+
+# Transfer
+srun python -u elk_generalization/elk/transfer_diversify.py \
+    --data-dir $data_dir/experiments/diversify \
+    --models ${model_names[@]} \
+    --training-datasets ${train_datasets[@]} \
+    --n-train-datasets 3 \
+    --eval-datasets ${eval_datasets[@]} \
+    --reporters ${reporters[@]} \
+    --contrast-norm "burns" \
+    --normalize-contrast-individually \
+    --train-examples 283 \
+    --label-col "labels" \
+    --verbose
+    # --prevent-skip \
+
+
+# Summarize
+train_examples=283
+srun python -u elk_generalization/elk/summarize_diversify.py \
+    --data-dir $data_dir/experiments/diversify \
+    --models ${model_names[@]} \
+    --reporters ${reporters[@]} \
+    --metric auroc \
+    --label-col labels \
+    --training-datasets ${train_datasets[@]} \
+    --max-n-train-datasets 3 \
+    --eval-datasets ${eval_datasets[@]} \
+    --train-examples $train_examples \
+    --save-csv-path $data_dir/experiments/diversify/diversify_summaryn=$train_examples.csv \
