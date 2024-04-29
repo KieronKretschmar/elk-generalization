@@ -71,4 +71,4 @@ srun python -u elk_generalization/elk/summarize_diversify.py \
     --max-n-train-datasets 3 \
     --eval-datasets ${eval_datasets[@]} \
     --train-examples $train_examples \
-    --save-csv-path $data_dir/experiments/diversify/diversify_summaryn=$train_examples.csv \
+    --save-csv-path $data_dir/experiments/diversify/diversify_summary_n=$train_examples.csv \
