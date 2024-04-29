@@ -141,7 +141,6 @@ if __name__ == "__main__":
                     assert isinstance(record, dict)
 
                     prompt = tokenizer.encode(record["statement"])
-                    neg_prompt = tokenizer.encode(record["neg_statement"])
 
                     with torch.inference_mode():
                         outputs = model(
@@ -149,34 +148,40 @@ if __name__ == "__main__":
                             output_hidden_states=True,
                             use_cache=True,
                         )
-                        neg_outputs = model(
-                            torch.as_tensor([neg_prompt], device=model.device),
-                            output_hidden_states=True,
-                            use_cache=True,
-                        )
-                        ccs_outputs = [outputs.hidden_states[1:], neg_outputs.hidden_states[1:]]
-
-                        for j, (state1, state2) in enumerate(zip(*ccs_outputs)):
-                            # Store hiddens for only prompt and last token
-                            ccs_buffers[j][i, 0] = state1[0][-1] 
-                            ccs_buffers[j][i, 1] = state2[0][-1]
 
                         # Extract hidden states of the last token in each layer for the non-negated statement for which the label is accurate
                         for j, state in enumerate(outputs.hidden_states[1:]):
                             buffers[j][i] = state[0, -1, :]
-                        # and for negated statement for which the label is wrong
-                        for j, state in enumerate(neg_outputs.hidden_states[1:]):
-                            neg_buffers[j][i] = state[0, -1, :]
+
+                        if args.extract_ccs:
+                            neg_prompt = tokenizer.encode(record["neg_statement"])
+                            neg_outputs = model(
+                                torch.as_tensor([neg_prompt], device=model.device),
+                                output_hidden_states=True,
+                                use_cache=True,
+                            )
+                            ccs_outputs = [outputs.hidden_states[1:], neg_outputs.hidden_states[1:]]
+
+                            for j, (state1, state2) in enumerate(zip(*ccs_outputs)):
+                                # Store hiddens for only prompt and last token
+                                ccs_buffers[j][i, 0] = state1[0][-1] 
+                                ccs_buffers[j][i, 1] = state2[0][-1]
+
+                            # and for negated statement for which the label is wrong
+                            for j, state in enumerate(neg_outputs.hidden_states[1:]):
+                                neg_buffers[j][i] = state[0, -1, :]
 
                 # Sanity check
                 assert all(buffer.isfinite().all() for buffer in buffers)
-                assert all(buffer.isfinite().all() for buffer in ccs_buffers)
+
 
                 # Save results to disk for later
                 for label_col in args.label_cols:
                     labels = torch.as_tensor(dataset[label_col], dtype=torch.int32)
                     torch.save(labels, root / f"{label_col}s.pt")
                 torch.save(buffers, root / "hiddens.pt")
-                torch.save(neg_buffers, root / "neg_hiddens.pt")
-                torch.save(ccs_buffers, root / "ccs_hiddens.pt")
+                if args.extract_ccs:
+                    torch.save(neg_buffers, root / "neg_hiddens.pt")
+                    torch.save(ccs_buffers, root / "ccs_hiddens.pt")
+                    assert all(buffer.isfinite().all() for buffer in ccs_buffers)
                 print(f"Finished storing hiddens for {model_name=} on {dataset_name=}.")

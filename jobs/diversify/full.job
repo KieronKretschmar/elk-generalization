@@ -23,24 +23,35 @@ export HF_HOME=$data_dir/hf_cache
 model_names=("EleutherAI/pythia-410M" "EleutherAI/pythia-1B" "EleutherAI/pythia-1.4B" "EleutherAI/pythia-2.8B" "EleutherAI/pythia-6.9B" "EleutherAI/pythia-12B" "mistralai/Mistral-7B-v0.1" "meta-llama/Llama-2-7b-hf" "meta-llama/Llama-2-13b-hf")
 reporters=(ccs crc lr lr-on-pair lda mean-diff random)
 neg_dataset_names=(got/cities got/larger_than got/sp_en_trans)
+supervised_dataset_names=(got/cities_cities_conj got/cities_cities_disj got/common_claim_true_false got/companies_true_false got/counterfact_true_false got/neg_cities got/neg_sp_en_trans got/smaller_than)
 train_datasets=(got/cities got/larger_than got/sp_en_trans) # got/sp_en_trans only has 283 training samples
-eval_datasets=(got/cities got/larger_than got/sp_en_trans)
+eval_datasets=(got/cities got/larger_than got/sp_en_trans got/cities_cities_conj got/cities_cities_disj got/common_claim_true_false got/companies_true_false got/counterfact_true_false got/neg_cities got/neg_sp_en_trans got/smaller_than)
 
-# Extract - neg datasets
+# Extract
 max_examples=(4096 1024)
 splits=(train test)
-
 for (( i=0; i<${#splits[@]}; i++ )); do
     max_example=${max_examples[i]}
     split=${splits[i]}
 
-    srun python -u elk_generalization/elk/extract_hiddens_neg_statement.py \
+    # Supervised datasets
+    srun python -u elk_generalization/elk/extract_hiddens_got.py \
+        --models ${model_names[@]} \
+        --data-dir $data_dir/experiments/diversify \
+        --datasets ${supervised_dataset_names[@]} \
+        --max-examples $max_example \
+        --splits $split \
+        --label-cols "label"
+
+    # CCS datasets
+    srun python -u elk_generalization/elk/extract_hiddens_got.py \
         --models ${model_names[@]} \
         --data-dir $data_dir/experiments/diversify \
         --datasets ${neg_dataset_names[@]} \
         --max-examples $max_example \
         --splits $split \
-        --label-cols "label"
+        --label-cols "label"\
+        --extract-ccs
 done
 
 # Transfer
