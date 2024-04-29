@@ -59,7 +59,7 @@ srun python -u elk_generalization/elk/transfer_diversify.py \
     --data-dir $data_dir/experiments/diversify \
     --models ${model_names[@]} \
     --training-datasets ${train_datasets[@]} \
-    --n-train-datasets 3 \
+    --max-n-train-datasets 3 \
     --eval-datasets ${eval_datasets[@]} \
     --reporters ${reporters[@]} \
     --contrast-norm "burns" \

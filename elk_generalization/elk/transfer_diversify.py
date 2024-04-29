@@ -22,7 +22,7 @@ if __name__ == "__main__":
             models = ["EleutherAI/pythia-410M"],
             training_datasets = ["got/cities", "got/larger_than"],
             eval_datasets = ["got/cities", "got/larger_than"],
-            n_train_datasets = 1,
+            max_n_train_datasets = 1,
             reporters = ["ccs", "lr"],
             contrast_norm = "burns",
             normalize_contrast_individually = True,
@@ -54,7 +54,7 @@ if __name__ == "__main__":
             default=["got/cities"]
         )
         parser.add_argument("--models", nargs="+", type=str, help="List of model names.")
-        parser.add_argument("--n-train-datasets", help="Number of datasets unionized over to serve as training data", type=int, default=1)
+        parser.add_argument("--max-n-train-datasets", help="Maximum number of datasets unionized over to serve as training data", type=int, default=1)
         parser.add_argument(
             "--reporters",
             type=str, 
@@ -97,7 +97,7 @@ if __name__ == "__main__":
     assert data_dir.exists(), f"{data_dir=} does not exist"
     for training_dataset in args.training_datasets:
         assert (data_dir / training_dataset).exists(), f"Could not find training directory {(data_dir / training_dataset)}."
-    assert args.n_train_datasets <= len(args.training_datasets), "Can not combine more datasets than were provided"
+    assert args.max_n_train_datasets <= len(args.training_datasets), "Can not combine more datasets than were provided"
 
     # Determine which normalization strategy to use
     contrast_individual_norm = args.contrast_norm if args.normalize_contrast_individually else None
@@ -105,7 +105,11 @@ if __name__ == "__main__":
     
     for model in args.models:
         # Iterate through all combinations of training datasets of the given length
-        for training_datasets in combinations(args.training_datasets, r=args.n_train_datasets):
+        training_dataset_combinations = []
+        for n in range(1, args.max_n_train_datasets + 1):
+            training_dataset_combinations.extend(combinations(args.training_datasets, r=n))
+
+        for training_datasets in training_dataset_combinations:
             training_cfg = DiversifyTrainingConfig(training_datasets, n_training_samples=args.train_examples)
             training_identifier = training_cfg.descriptor()
 
@@ -115,7 +119,7 @@ if __name__ == "__main__":
                 paths=training_paths, 
                 label_cols=["labels"],
                 device=args.device,
-                samples_per_dataset=int(args.train_examples / args.n_train_datasets),
+                samples_per_dataset=int(args.train_examples / len(training_datasets)),
                 contrast_norm=contrast_individual_norm,
                 reporters_for_log_odds=[], # Not needed during training, as log odds will be created below
                 )
