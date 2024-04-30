@@ -104,6 +104,7 @@ if __name__ == "__main__":
     contrast_aggr_norm = None if args.normalize_contrast_individually else args.contrast_norm
     
     for model in args.models:
+        print(f"Starting transfer experiments for {model}.")
         # Iterate through all combinations of training datasets of the given length
         training_dataset_combinations = []
         for n in range(1, args.max_n_train_datasets + 1):
@@ -221,7 +222,7 @@ if __name__ == "__main__":
                     
                 # Test
                 if args.verbose: 
-                    print(f"Starting testing {reporter_name} trained on {training_identifier} to predict {args.label_col} on {len(args.eval_datasets)} datasets.")
+                    print(f"Starting testing {reporter_name} trained on {training_identifier} with {model} to predict {args.label_col} on {len(args.eval_datasets)} datasets.")
                 with torch.inference_mode():
                     # Test on all eval datasets seperately
                     for eval_dataset in args.eval_datasets:
