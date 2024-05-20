@@ -30,6 +30,7 @@ if __name__ == "__main__":
             max_examples = [40, 10],
             splits = ["train", "test"],
             label_cols = ["label"],
+            extract_ccs = True,
             filter_cols = [],
             filter_values = [],
             )
@@ -71,10 +72,13 @@ if __name__ == "__main__":
             help="Columns of the dataset that contain labels we wish to save",
             default=[],
         )
+        parser.add_argument("--extract-ccs", action="store_true")
         args = parser.parse_args()
 
     print(args)
     for model_name in args.models:
+        print(f"Starting extraction for {model_name}")
+        model = None
         model = AutoModelForCausalLM.from_pretrained(
             model_name,
             device_map={"": torch.cuda.current_device()},
@@ -118,24 +122,25 @@ if __name__ == "__main__":
                     )
                     for _ in range(model.config.num_hidden_layers)
                 ]
-                neg_buffers = [
-                    torch.full(
-                        [len(dataset), model.config.hidden_size],
-                        torch.nan,
-                        device=model.device,
-                        dtype=model.dtype,
-                    )
-                    for _ in range(model.config.num_hidden_layers)
-                ]
-                ccs_buffers = [
-                    torch.full(
-                        [len(dataset), 2, model.config.hidden_size],
-                        torch.nan,
-                        device=model.device,
-                        dtype=model.dtype,
-                    )
-                    for _ in range(model.config.num_hidden_layers)
-                ]
+                if args.extract_ccs:
+                    neg_buffers = [
+                        torch.full(
+                            [len(dataset), model.config.hidden_size],
+                            torch.nan,
+                            device=model.device,
+                            dtype=model.dtype,
+                        )
+                        for _ in range(model.config.num_hidden_layers)
+                    ]
+                    ccs_buffers = [
+                        torch.full(
+                            [len(dataset), 2, model.config.hidden_size],
+                            torch.nan,
+                            device=model.device,
+                            dtype=model.dtype,
+                        )
+                        for _ in range(model.config.num_hidden_layers)
+                    ]
 
                 for i, record in tqdm(enumerate(dataset), total=len(dataset), mininterval=10):
                     assert isinstance(record, dict)
