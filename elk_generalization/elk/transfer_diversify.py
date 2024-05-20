@@ -126,8 +126,6 @@ if __name__ == "__main__":
                 )
                     
             # Select subsets for training
-            train_hiddens = aggs["hiddens"]
-            train_ccs_hiddens = aggs["ccs_hiddens"]
             train_labels = aggs[args.label_col]
 
             # Sanity checks for balancing
@@ -154,9 +152,9 @@ if __name__ == "__main__":
 
                 # Test
                 if args.verbose: 
-                    print(f"Starting training {reporter_name} to predict {args.label_col} on {train_hiddens[0].shape[0]} samples from {training_identifier}.")
+                    print(f"Starting training {reporter_name} to predict {args.label_col} on {aggs['hiddens'][0].shape[0]} samples from {training_identifier}.")
 
-                selected_train_hiddens = train_ccs_hiddens if reporter_name in ["ccs", "crc", "lr-on-pair"] else train_hiddens
+                selected_train_hiddens = aggs["ccs_hiddens"] if reporter_name in ["ccs", "crc", "lr-on-pair"] else aggs["hiddens"]
 
                 reporters = []  # one for each layer
                 for layer, train_hidden in tqdm(
@@ -230,12 +228,21 @@ if __name__ == "__main__":
                         eval_path = data_dir / eval_dataset / model / "test"
                         # Expected (results) data structure: data_dir/<eval_dataset>/<model>/<train|test>/<training_identifier>/<reporter>_log_odds.pt
                         results_path = data_dir / eval_dataset / model / "test" / training_identifier
-                        hiddens_file = (
-                            "ccs_hiddens.pt"
-                            if reporter_name in {"ccs", "crc", "lr-on-pair"}
-                            else "hiddens.pt"
-                        )
-                        test_hiddens = torch.load(eval_path / hiddens_file, map_location=torch.device(args.device))
+                        if reporter_name in {"ccs", "crc", "lr-on-pair"}:
+                            hiddens_file = "ccs_hiddens.pt"
+                            if (eval_path / hiddens_file).exists():
+                                ccs_hiddens_exist = True
+                                test_hiddens = torch.load(eval_path / hiddens_file, map_location=torch.device(args.device))
+                            else:
+                                ccs_hiddens_exist = False
+                                # To evaluate an unsupervised probe on a dataset that does not have tuples, we use the 0-vector instead of the negated statement
+                                test_hiddens = torch.load(eval_path / "hiddens.pt", map_location=torch.device(args.device)) # list of (n,d) tensors
+                                print("Stacking test_hiddens")
+                                test_hiddens = [torch.stack([h, torch.zeros_like(h)], dim=1) for h in test_hiddens] # list of (n,2,d) tensors
+                        else:
+                            hiddens_file = "hiddens.pt"
+                            test_hiddens = torch.load(eval_path / hiddens_file, map_location=torch.device(args.device))
+
                         test_labels = (
                             torch.load(eval_path / f"{args.label_col}.pt", map_location=torch.device(args.device)).int()
                         )

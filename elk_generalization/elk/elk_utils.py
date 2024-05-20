@@ -238,13 +238,20 @@ class DiversifyTrainingConfig():
         self.n_training_samples = n_training_samples
 
     def descriptor(self):
-        """Unique string identifying the training directories used
+        """Unique string identifying the training directories used, but ignores endings in "_tuples".
 
         Returns:
             str: identifier
         """
         desc = f"trained-on_n={self.n_training_samples}_"
         desc += "_".join(self.training_datasets).replace("/","-")
+
+        # Remove "_tuples" and "_true_false" as a hacky workaround to solve the issue that counterfact_true_false 
+        # and counterfact_true_false_tuples are used to train supervised/unsupervised methods, 
+        # but are essentially the same dataset and should be treated as such in later steps
+        desc = desc.replace("_tuples", "_true_false")
+        if "got/counterfact_tuples" in self.training_datasets:
+            print(f"{desc=}")
         return desc
 
 def aggregate_datasets(paths, label_cols, device, samples_per_dataset=None, contrast_norm=None, reporters_for_log_odds=[]):
@@ -252,10 +259,12 @@ def aggregate_datasets(paths, label_cols, device, samples_per_dataset=None, cont
     out = {}
     for i, path in enumerate(paths):
         train_hiddens = torch.load(path / "hiddens.pt", map_location=torch.device(device))
-        train_ccs_hiddens = torch.load(path / "ccs_hiddens.pt", map_location=torch.device(device))
+        ccs_hiddens_exist = (path / "ccs_hiddens.pt").exists()
+        if ccs_hiddens_exist:
+            train_ccs_hiddens = torch.load(path / "ccs_hiddens.pt", map_location=torch.device(device))
 
         # If a contrast_norm is specified, we normalize each dataset individually
-        if contrast_norm:
+        if contrast_norm and ccs_hiddens_exist:
             for layer in range(len(train_ccs_hiddens)):
                 # Unsqueeze+Squeeze because normalize_ccs_hiddens expects variants dimension
                 normalized_ccs_hiddens, _ = normalize_ccs_hiddens(train_ccs_hiddens[layer].unsqueeze(1), norm=contrast_norm)
@@ -274,7 +283,8 @@ def aggregate_datasets(paths, label_cols, device, samples_per_dataset=None, cont
         else:
             indices = torch.arange(train_n)
         train_hiddens = [h[indices] for h in train_hiddens]
-        train_ccs_hiddens = [h[indices] for h in train_ccs_hiddens]
+        if ccs_hiddens_exist:
+            train_ccs_hiddens = [h[indices] for h in train_ccs_hiddens]
 
         # Extract log_odds for each reporter (only relevant for evaluation)
         log_odds = {}
@@ -290,14 +300,16 @@ def aggregate_datasets(paths, label_cols, device, samples_per_dataset=None, cont
         # Concatenate data with data from previous datasets eval_paths
         if i==0:
             out["hiddens"] = train_hiddens
-            out["ccs_hiddens"] = train_ccs_hiddens
+            if ccs_hiddens_exist:
+                out["ccs_hiddens"] = train_ccs_hiddens
             for reporter in reporters_for_log_odds:
                 out[f"{reporter}_log_odds"] = log_odds[reporter]
             for label_col in label_cols:
                 out[label_col] = labels
         else:
             out["hiddens"] = [torch.cat([out["hiddens"][i], train_hiddens[i]]) for i in range(len(train_hiddens))]
-            out["ccs_hiddens"] = [torch.cat([out["ccs_hiddens"][i], train_ccs_hiddens[i]]) for i in range(len(train_ccs_hiddens))]
+            if ccs_hiddens_exist:
+                out["ccs_hiddens"] = [torch.cat([out["ccs_hiddens"][i], train_ccs_hiddens[i]]) for i in range(len(train_ccs_hiddens))]
             for reporter in reporters_for_log_odds:
                 out[f"{reporter}_log_odds"] = torch.cat([out[f"{reporter}_log_odds"], log_odds[reporter]], axis=1)
             for label_col in label_cols:

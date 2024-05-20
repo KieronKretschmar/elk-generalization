@@ -21,11 +21,29 @@ export HF_HOME=$data_dir/hf_cache
 
 # General vars
 model_names=("EleutherAI/pythia-410M" "EleutherAI/pythia-1B" "EleutherAI/pythia-1.4B" "EleutherAI/pythia-2.8B" "EleutherAI/pythia-6.9B" "EleutherAI/pythia-12B" "mistralai/Mistral-7B-v0.1" "meta-llama/Llama-2-7b-hf" "meta-llama/Llama-2-13b-hf")
-reporters=(ccs crc lr lr-on-pair lda mean-diff random)
-neg_dataset_names=(got/cities got/larger_than got/sp_en_trans)
-supervised_dataset_names=(got/cities_cities_conj got/cities_cities_disj got/common_claim_true_false got/companies_true_false got/counterfact_true_false got/neg_cities got/neg_sp_en_trans got/smaller_than)
-train_datasets=(got/cities got/larger_than got/sp_en_trans) # got/sp_en_trans only has 283 training samples
+all_reporters=(ccs crc lr lr-on-pair lda mean-diff random)
 eval_datasets=(got/cities got/larger_than got/sp_en_trans got/cities_cities_conj got/cities_cities_disj got/common_claim_true_false got/companies_true_false got/counterfact_true_false got/neg_cities got/neg_sp_en_trans got/smaller_than)
+train_examples=283
+max_train_datasets=4
+
+supervised_reporters=(lr lda mean-diff random)
+supervised_dataset_names=(got/cities got/larger_than got/sp_en_trans got/cities_cities_conj got/cities_cities_disj got/common_claim_true_false got/companies_true_false got/counterfact_true_false got/neg_cities got/neg_sp_en_trans got/smaller_than)
+supervised_train_datasets=(got/cities got/larger_than got/sp_en_trans got/counterfact_true_false)
+
+unsupervised_reporters=(ccs crc lr-on-pair)
+unsupervised_dataset_names=(got/cities got/larger_than got/sp_en_trans got/counterfact_tuples)
+unsupervised_train_datasets=(got/cities got/larger_than got/sp_en_trans got/counterfact_tuples)
+
+# # Settings for 1000-sample experiment without sp_en_trans
+# train_examples=1000
+# supervised_train_datasets=(got/cities got/larger_than got/counterfact_true_false)
+# unsupervised_train_datasets=(got/cities got/larger_than got/counterfact_tuples)
+# max_train_datasets=3
+
+# # Settings for 1000-sample supervised experiment without sp_en_trans and companies_true_false
+# train_examples=1000
+# supervised_train_datasets=(got/cities got/larger_than got/cities_cities_conj got/cities_cities_disj got/common_claim_true_false got/counterfact_true_false got/neg_cities got/smaller_than)
+# max_train_datasets=5
 
 # Extract
 max_examples=(4096 1024)
@@ -47,39 +65,53 @@ for (( i=0; i<${#splits[@]}; i++ )); do
     srun python -u elk_generalization/elk/extract_hiddens_got.py \
         --models ${model_names[@]} \
         --data-dir $data_dir/experiments/diversify \
-        --datasets ${neg_dataset_names[@]} \
+        --datasets ${unsupervised_dataset_names[@]} \
         --max-examples $max_example \
         --splits $split \
         --label-cols "label"\
         --extract-ccs
 done
 
-# Transfer
+# Transfer - supervised
 srun python -u elk_generalization/elk/transfer_diversify.py \
     --data-dir $data_dir/experiments/diversify \
     --models ${model_names[@]} \
-    --training-datasets ${train_datasets[@]} \
-    --max-n-train-datasets 3 \
+    --training-datasets ${supervised_train_datasets[@]} \
+    --max-n-train-datasets $max_train_datasets \
     --eval-datasets ${eval_datasets[@]} \
-    --reporters ${reporters[@]} \
+    --reporters ${supervised_reporters[@]} \
     --contrast-norm "burns" \
     --normalize-contrast-individually \
-    --train-examples 283 \
+    --train-examples $train_examples \
+    --label-col "labels" \
+    --verbose
+    # --prevent-skip \
+
+# Transfer - unsupervised
+srun python -u elk_generalization/elk/transfer_diversify.py \
+    --data-dir $data_dir/experiments/diversify \
+    --models ${model_names[@]} \
+    --training-datasets ${unsupervised_train_datasets[@]} \
+    --max-n-train-datasets $max_train_datasets \
+    --eval-datasets ${eval_datasets[@]} \
+    --reporters ${unsupervised_reporters[@]} \
+    --contrast-norm "burns" \
+    --normalize-contrast-individually \
+    --train-examples $train_examples \
     --label-col "labels" \
     --verbose
     # --prevent-skip \
 
 
 # Summarize
-train_examples=283
 srun python -u elk_generalization/elk/summarize_diversify.py \
     --data-dir $data_dir/experiments/diversify \
     --models ${model_names[@]} \
-    --reporters ${reporters[@]} \
+    --reporters ${all_reporters[@]} \
     --metric auroc \
     --label-col labels \
-    --training-datasets ${train_datasets[@]} \
-    --max-n-train-datasets 3 \
+    --training-datasets ${supervised_train_datasets[@]} \
+    --max-n-train-datasets $max_train_datasets \
     --eval-datasets ${eval_datasets[@]} \
     --train-examples $train_examples \
-    --save-csv-path $data_dir/experiments/diversify/diversify_summary_n=$train_examples.csv \
+    --save-csv-path $data_dir/experiments/diversify/diversify_summary_n=${train_examples}.csv \

@@ -30,6 +30,7 @@ if __name__ == "__main__":
             max_examples = [40, 10],
             splits = ["train", "test"],
             label_cols = ["label"],
+            extract_ccs = True,
             filter_cols = [],
             filter_values = [],
             )
@@ -71,10 +72,13 @@ if __name__ == "__main__":
             help="Columns of the dataset that contain labels we wish to save",
             default=[],
         )
+        parser.add_argument("--extract-ccs", action="store_true")
         args = parser.parse_args()
 
     print(args)
     for model_name in args.models:
+        print(f"Starting extraction for {model_name}")
+        model = None
         model = AutoModelForCausalLM.from_pretrained(
             model_name,
             device_map={"": torch.cuda.current_device()},
