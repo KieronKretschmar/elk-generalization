@@ -14,6 +14,8 @@ from einops import repeat
 from torch import Tensor, optim
 from typing_extensions import override
 
+from concept_erasure import LeaceFitter
+
 
 @dataclass
 class CcsConfig:

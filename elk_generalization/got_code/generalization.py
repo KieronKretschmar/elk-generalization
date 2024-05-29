@@ -7,9 +7,10 @@ from pathlib import Path
 import pandas as pd
 import os
 from itertools import combinations
+import time
 
 from utils import DataManager, transfer_type
-from probes import LRProbe, MMProbe, CCSProbe, MMProbe_Mallen
+from probes import LRProbe, MMProbe, CCSProbe, MMProbe_Mallen, CrcReporter
 
 
 if __name__ == "__main__":    
@@ -30,22 +31,63 @@ if __name__ == "__main__":
         parser.add_argument("--model", type=str, help="Name of the model from huggingface")
         parser.add_argument("--layer", type=int, help="Layer on which to train")
         parser.add_argument("--max-n-train-datasets", type=int, help="Maximum number of combinations of datasets to train on")
-        parser.add_argument("--train-examples", type=int, default=4096)
+        parser.add_argument("--train-examples", type=int, default=None)
+        parser.add_argument("--split", type=float, default=None, help="Fraction of dataset used for training.")
         parser.add_argument("--seed", type=int, default=1234)
         parser.add_argument("--save-csv-path", type=Path, help="Path to save the dataframe as csv.")
 
         args = parser.parse_args()
     print(f"{args=}")
 
+    device = 'cuda:0' if t.cuda.is_available() else 'cpu'
+    model = args.model
+    layer = args.layer
+    max_n_train_datasets = args.max_n_train_datasets
+    train_examples = args.train_examples
+    split = args.split
+    save_csv_path = args.save_csv_path
+    seed = args.seed
+
+    assert split is not None or train_examples is not None, "At least one of split, train_examples must be specified"
+
+    root = Path(args.data_dir)
+
+    def to_str(l):
+        return '+'.join(l)
+
+    def to_str_combination(c):
+        return "&".join([to_str(i) for i in c])
+    
+    def partition_sizes(n, k):
+        # Determines n1,n2,...,nk such that they are as similar as possible while n1+...nk=n
+        # if n is None returns a list of Nones of length k
+        if n == None:
+            return [None] * k
+        
+        partition_size = n // k
+        remainder = n % k
+        sizes = []
+        for i in range(k):
+            size = partition_size + (1 if i < remainder else 0)
+            sizes.append(size)
+        assert sum(sizes) == n
+        return sizes
+
+
+    accs = []
+
+    if seed is None:
+        seed = random.randint(0, 100000)
+
+    # SUPERVISED
     train_medlies  = [
-        # ['got/cities'],
+        ['got/cities'],
         ['got/cities', 'got/neg_cities'],
-        # ['got/larger_than'],
+        ['got/larger_than'],
         ['got/larger_than', 'got/smaller_than'],
         ['got/sp_en_trans', 'got/neg_sp_en_trans'],
         ['got/companies_true_false'],
         ['got/counterfact_true', 'got/counterfact_false'],
-        # ['likely']
     ]
 
     supervised_val_datasets = [
@@ -63,50 +105,15 @@ if __name__ == "__main__":
         'got/counterfact_false',   
         # 'got/counterfact_true_false'    # We use the true/false datasets above for validation instead
     ]
-    split = 0.8
-    device = 'cuda:0' if t.cuda.is_available() else 'cpu'
-    model = args.model
-    layer = args.layer
-    max_n_train_datasets = args.max_n_train_datasets
-    train_examples = args.train_examples
-    save_csv_path = args.save_csv_path
-    seed = args.seed
-
-    root = Path(args.data_dir)
-
-    def to_str(l):
-        return '+'.join(l)
-
-    def to_str_combination(c):
-        return "&".join([to_str(i) for i in c])
-    
-    def partition_sizes(n, k):
-        # Determines n1,n2,...,nk such that they are as similar as possible while n1+...nk=n
-        partition_size = n // k
-        remainder = n % k
-        sizes = []
-        for i in range(k):
-            size = partition_size + (1 if i < remainder else 0)
-            sizes.append(size)
-        assert sum(sizes) == n
-        return sizes
-
     SupervisedProbeClasses = [
         LRProbe, 
         # MMProbe_Mallen,
         MMProbe,
         ]
-    accs = []
-
-    if seed is None:
-        seed = random.randint(0, 100000)
-
-    # SUPERVISED
     medley_combinations = []
     for k in range(1, max_n_train_datasets + 1):
         medley_combinations.extend(combinations(train_medlies, r=k))
 
-    # accs = {to_str(medley_combination) : {} for medley_combination in medley_combinations}
     for medley_combination in medley_combinations:
         dm = DataManager(root=root)
         all_train_datasets = [ds for medley in medley_combinations for ds in medley]
@@ -115,7 +122,7 @@ if __name__ == "__main__":
         for medley, medley_train_size in zip(medley_combination, medley_train_sizes):
             train_sizes = partition_sizes(medley_train_size, len(medley))
             for dataset, train_size in zip(medley, train_sizes):
-                dm.add_dataset(dataset, model, layer, n_training_samples=train_size, seed=seed, center=True, device=device)
+                dm.add_dataset(dataset, model, layer, split=split, n_training_samples=train_size, seed=seed, center=True, device=device)
 
         for dataset in supervised_val_datasets:
             if dataset not in all_train_datasets:
@@ -157,7 +164,8 @@ if __name__ == "__main__":
 
     # UNSUPERVISED
     UnsupervisedProbeClasses = [
-        CCSProbe
+        CCSProbe,
+        CrcReporter
     ]
     
     ccs_base_medlies = [
@@ -197,17 +205,42 @@ if __name__ == "__main__":
         'azaria/inventions_true_false'
     ]
 
+    # # Configuration to reproduce part of Figure 5 from Geometry of Truth paper
+    # ccs_base_medlies = [
+    #     ['got/cities', 'got/neg_cities'],
+    # ]
+
+    # # Evaluate only on CCS datasets to avoid bias introduced from datasets only used for evaluation, 
+    # # as these will dominate evaluation datasets for highly diverse training configuration
+    # ccs_val_datasets = [
+    #     'got/cities',
+    #     'got/neg_cities',
+    #     'got/larger_than',
+    #     'got/smaller_than',
+    #     'got/sp_en_trans',
+    #     'got/neg_sp_en_trans',
+    #     'got/cities_cities_conj',
+    #     'got/cities_cities_disj',
+    #     'got/companies_true_false',
+    #     'got/common_claim_true_false',
+    #     'got/counterfact_true',
+    #     'got/counterfact_false',
+    # ]
+
+
     medley_combinations = []
     for k in range(1, max_n_train_datasets + 1):
         medley_combinations.extend(combinations(ccs_base_medlies, r=k))
 
-    for medley_combination in medley_combinations:
+    for i, medley_combination in enumerate(medley_combinations):
+        print(f"Starting on medley {i+1}/{len(medley_combinations)}: {to_str_combination(medley_combination)}")
+        tik = time.time()
         dm = DataManager(root=root)
         all_train_datasets = [ds for medley in medley_combination for ds in medley]
         train_sizes = partition_sizes(train_examples, len(medley_combination))
         for medley, train_size in zip(medley_combination, train_sizes):
             for dataset in medley:
-                dm.add_dataset(dataset, model, layer, n_training_samples=train_size, seed=seed, center=True, device=device)
+                dm.add_dataset(dataset, model, layer, split=split, n_training_samples=train_size, seed=seed, center=True, device=device)
 
         for dataset in ccs_val_datasets:
             if dataset not in all_train_datasets:
@@ -221,11 +254,15 @@ if __name__ == "__main__":
         train_acts = t.cat(train_acts)
         train_labels = t.cat(train_labels)
         train_neg_acts = t.cat(train_neg_acts)
+        print(f"Preparing data took {time.time() - tik:.2f}s")
 
         for ProbeClass in UnsupervisedProbeClasses:
-            print(f"Starting training CCS on {to_str_combination(medley_combination)}")
+            print(f"Starting training {str(ProbeClass)} on {to_str_combination(medley_combination)}")
+            tik = time.time()
             probe = ProbeClass.from_data(train_acts, train_neg_acts, train_labels, device=device)
+            print(f"Training took {time.time() - tik:.2f}s")
 
+            tik = time.time()
             for val_dataset in ccs_val_datasets:
                 if val_dataset in all_train_datasets:
                     acts, labels = dm.data['val'][val_dataset]
@@ -246,7 +283,8 @@ if __name__ == "__main__":
                     "test_size": len(acts),
                     "seed": seed, 
                 })
-        print(f"Finished supervised.")
+            print(f"Evaluating took {time.time() - tik:.2f}s")
+    print(f"Finished unsupervised.")
 
     # ORACLE
     oracle_val_datasets = list(set(supervised_val_datasets + ccs_val_datasets))
@@ -276,6 +314,7 @@ if __name__ == "__main__":
                 "seed": seed, 
             })
     print(f"Finished oracles:")
+
     print(f"{accs=}")
     df = pd.DataFrame(accs)
     df.to_csv(save_csv_path)

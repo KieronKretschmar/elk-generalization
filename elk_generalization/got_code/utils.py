@@ -103,7 +103,8 @@ class DataManager:
         If split is not None, gives the train/val split proportion. Uses seed for reproducibility.
         limit_n is the number of samples. If limit_n is None, then all samples are used
         """
-        assert split is None or n_training_samples is None, "Training samples should not be limited by split and limit at once" 
+        assert split is None or n_training_samples is None, "Training samples should not be limited by split and limit at once"
+        print(f"{split=}, {n_training_samples=}")
         dataset_path = self.root / dataset_name / model_name / "full"
         acts = collect_acts(dataset_path, layer=layer, center=center, scale=scale, device=device)
         labels = t.load(dataset_path / "labels.pt").to(device).float()

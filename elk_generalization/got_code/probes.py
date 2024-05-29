@@ -1,4 +1,6 @@
+from concept_erasure import LeaceFitter, LeaceEraser
 import torch as t
+import torch.nn.functional as F
 
 class LRProbe(t.nn.Module):
     def __init__(self, d_in):
@@ -104,7 +106,6 @@ class MMProbe_Mallen(nn.Module):
     def pred(self, x, iid=False):
         # Ignore iid?
         return self(x) > 0.
-        return self(x).round()
 
 
 
@@ -151,3 +152,78 @@ class CCSProbe(t.nn.Module):
     @property
     def direction(self):
         return self.net[0].weight.data[0]
+    
+class CrcReporter(nn.Module):
+    def __init__(self, in_features: int, device: torch.device, dtype: torch.dtype):
+        super().__init__()
+
+        self.linear = nn.Linear(in_features, 1, device=device, dtype=dtype)
+        self.eraser = None
+
+        # Learnable Platt scaling parameter
+        self.scale = nn.Parameter(torch.ones(1, device=device, dtype=dtype))
+
+    def forward(self, hiddens: Tensor) -> Tensor:
+        return self.raw_forward(hiddens)
+
+    def raw_forward(self, hiddens: Tensor) -> Tensor:
+        if self.eraser is not None:
+            hiddens = self.eraser(hiddens)
+        return self.linear(hiddens).mul(self.scale).squeeze()
+
+    def fit(self, x: Tensor):
+        n = len(x)
+
+        self.eraser = LeaceEraser.fit(
+            x=x.flatten(0, 1),
+            z=t.stack([x.new_zeros(n), x.new_ones(n)], dim=1).flatten(),
+        )
+        x = self.eraser(x)
+
+        # Top principal component of the contrast pair diffs
+        neg, pos = x.unbind(-2)
+        _, _, vh = t.pca_lowrank(pos - neg, q=1, niter=10)
+
+        # Use the TPC as the weight vector
+        self.linear.weight.data = vh.T
+
+    def platt_scale(self, labels: Tensor, hiddens: Tensor, max_iter: int = 100):
+        """Fit the scale and bias terms to data with LBFGS.
+
+        Args:
+            labels: Binary labels of shape [batch].
+            hiddens: Hidden states of shape [batch, dim].
+            max_iter: Maximum number of iterations for LBFGS.
+        """
+        _, k, _ = hiddens.shape
+        labels = F.one_hot(labels.long(), k)
+
+        opt = optim.LBFGS(
+            [self.linear.bias, self.scale],
+            line_search_fn="strong_wolfe",
+            max_iter=max_iter,
+            tolerance_change=t.finfo(hiddens.dtype).eps,
+            tolerance_grad=t.finfo(hiddens.dtype).eps,
+        )
+
+        def closure():
+            opt.zero_grad()
+            loss = nn.functional.binary_cross_entropy_with_logits(
+                self.raw_forward(hiddens), labels.float()
+            )
+            loss.backward()
+            return float(loss)
+
+        opt.step(closure)
+
+    def from_data(acts, neg_acts, labels=None, atol=1e-3, device='cpu'):
+        probe = CrcReporter(in_features=1, device=device, dtype=t.float)
+        x = t.stack([acts, neg_acts], dim=1)
+        probe.fit(x=x)
+        probe.platt_scale(labels=labels, hiddens=x)
+
+        return probe
+    
+    def pred(self, x, iid=False):
+        # Ignore iid?
+        return self(x) > 0.

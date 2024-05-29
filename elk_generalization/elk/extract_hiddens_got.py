@@ -73,6 +73,8 @@ if __name__ == "__main__":
             default=[],
         )
         parser.add_argument("--extract-ccs", action="store_true")
+        parser.add_argument("--shuffle", action="store_true")
+        parser.add_argument("--prevent-skip", action="store_true")
         args = parser.parse_args()
 
     print(args)
@@ -94,8 +96,8 @@ if __name__ == "__main__":
             for split, max_examples in zip(args.splits, args.max_examples):
                 root = Path(args.data_dir) / dataset_name / model_name / split
                 # check if all the results already exist
-                if (root / "hiddens.pt").exists():
-                    print(f"Hiddens already exist at {root}")
+                if not args.prevent_skip and (root / "hiddens.pt").exists():
+                    print(f"Hiddens already exist at {root}. Skipping.")
                     continue
                 
                 assert len(args.max_examples) == len(args.splits)
@@ -105,10 +107,10 @@ if __name__ == "__main__":
                 print(f"Processing '{split}' split...")
                 if Path(dataset_path).exists():
                     print(f"Trying to load {dataset_path} from disk...")
-                    dataset = load_from_disk(dataset_path)[split].shuffle()
-                # else:
-                #     print(f"Trying to load {dataset_path} from hub...")
-                #     dataset = load_dataset(dataset_path, split=split).shuffle()
+                    dataset = load_from_disk(dataset_path)[split]
+                    if args.shuffle:
+                        dataset = dataset.shuffle()
+
                 assert isinstance(dataset, Dataset)
 
                 dataset = dataset.select(range(min(max_examples, len(dataset))))
@@ -146,6 +148,8 @@ if __name__ == "__main__":
                     assert isinstance(record, dict)
 
                     prompt = tokenizer.encode(record["statement"])
+                    if i == 0:
+                        print(f"First statement of {dataset_name}: {record['statement']=}, {record['label']=}")
 
                     with torch.inference_mode():
                         outputs = model(
