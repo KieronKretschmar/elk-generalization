@@ -30,6 +30,7 @@ if __name__ == "__main__":
         )
         parser.add_argument("--model", type=str, help="Name of the model from huggingface")
         parser.add_argument("--layer", type=int, help="Layer on which to train")
+        parser.add_argument("--min-n-train-datasets", type=int, help="Minimum number of combinations of datasets to train on")
         parser.add_argument("--max-n-train-datasets", type=int, help="Maximum number of combinations of datasets to train on")
         parser.add_argument("--train-examples", type=int, default=None)
         parser.add_argument("--split", type=float, default=None, help="Fraction of dataset used for training.")
@@ -42,11 +43,15 @@ if __name__ == "__main__":
     device = 'cuda:0' if t.cuda.is_available() else 'cpu'
     model = args.model
     layer = args.layer
+    min_n_train_datasets = args.min_n_train_datasets
     max_n_train_datasets = args.max_n_train_datasets
     train_examples = args.train_examples
     split = args.split
     save_csv_path = args.save_csv_path
     seed = args.seed
+
+    # Enabling preloading is less efficient in terms of memory, but more efficient in terms of compute
+    preload_validation_data = True
 
     assert split is not None or train_examples is not None, "At least one of split, train_examples must be specified"
 
@@ -110,23 +115,35 @@ if __name__ == "__main__":
         # MMProbe_Mallen,
         MMProbe,
         ]
+    
+    # Load all full datasets into the data manager as they're used for evaluation only and are thus constant between medley_combinations
+    if preload_validation_data:
+        dm = DataManager(root=root)
+        for dataset in supervised_val_datasets:
+            dm.add_dataset(dataset, model, layer, split=None, center=True, device=device)
+
     medley_combinations = []
-    for k in range(1, max_n_train_datasets + 1):
+    for k in range(min_n_train_datasets, max_n_train_datasets + 1):
         medley_combinations.extend(combinations(train_medlies, r=k))
 
     for medley_combination in medley_combinations:
-        dm = DataManager(root=root)
         all_train_datasets = [ds for medley in medley_combinations for ds in medley]
         medley_train_sizes = partition_sizes(train_examples, len(medley_combination))
+
+        if preload_validation_data:
+            # Remove split datasets as they may have to be re-loaded with different splits depending on the medley_combination
+            dm.reset_split_datasets()
+        else:
+            dm = DataManager(root=root)
+            for dataset in supervised_val_datasets:
+                if dataset not in all_train_datasets:
+                    dm.add_dataset(dataset, model, layer, split=None, center=True, device=device)
 
         for medley, medley_train_size in zip(medley_combination, medley_train_sizes):
             train_sizes = partition_sizes(medley_train_size, len(medley))
             for dataset, train_size in zip(medley, train_sizes):
                 dm.add_dataset(dataset, model, layer, split=split, n_training_samples=train_size, seed=seed, center=True, device=device)
 
-        for dataset in supervised_val_datasets:
-            if dataset not in all_train_datasets:
-                dm.add_dataset(dataset, model, layer, split=None, center=True, device=device)
 
         train_acts, train_labels = dm.get('train')
 
@@ -169,14 +186,14 @@ if __name__ == "__main__":
     ]
     
     ccs_base_medlies = [
-        ['got/cities', 'got/neg_cities'],
-        ['got/larger_than', 'got/smaller_than'],
-        ['got/counterfact_true', 'got/counterfact_false'],
-        ['got/sp_en_trans', 'got/neg_sp_en_trans'],
-        ['azaria/animals_true_false', 'azaria/neg_animals_true_false'],
-        ['azaria/elements_true_false', 'azaria/neg_elements_true_false'],
-        ['azaria/facts_true_false', 'azaria/neg_facts_true_false'],
-        ['azaria/inventions_true_false', 'azaria/inventions_true_false'],
+        ['got/cities', 'got/neg_cities'],                                       # n=1496
+        ['got/larger_than', 'got/smaller_than'],                                # n=1980
+        ['got/counterfact_true', 'got/counterfact_false'],                      # n=15982
+        ['got/sp_en_trans', 'got/neg_sp_en_trans'],                             # n=354
+        ['azaria/animals_true_false', 'azaria/neg_animals_true_false'],         # n=1008
+        ['azaria/elements_true_false', 'azaria/neg_elements_true_false'],       # n=930
+        ['azaria/facts_true_false', 'azaria/neg_facts_true_false'],             # n=437
+        ['azaria/inventions_true_false', 'azaria/inventions_true_false'],       # n=876
     ]
 
     # Evaluate only on CCS datasets to avoid bias introduced from datasets only used for evaluation, 
@@ -227,24 +244,34 @@ if __name__ == "__main__":
     #     'got/counterfact_false',
     # ]
 
+    # Load all full datasets into the data manager as they're used for evaluation only and are thus constant between medley_combinations
+    if preload_validation_data:
+        dm = DataManager(root=root)
+        for dataset in ccs_val_datasets:
+            dm.add_dataset(dataset, model, layer, split=None, center=True, device=device)
 
     medley_combinations = []
-    for k in range(1, max_n_train_datasets + 1):
+    for k in range(min_n_train_datasets, max_n_train_datasets + 1):
         medley_combinations.extend(combinations(ccs_base_medlies, r=k))
 
     for i, medley_combination in enumerate(medley_combinations):
         print(f"Starting on medley {i+1}/{len(medley_combinations)}: {to_str_combination(medley_combination)}")
         tik = time.time()
-        dm = DataManager(root=root)
         all_train_datasets = [ds for medley in medley_combination for ds in medley]
         train_sizes = partition_sizes(train_examples, len(medley_combination))
+        
+        if preload_validation_data:
+            # Remove split datasets as they may have to be re-loaded with different splits depending on the medley_combination
+            dm.reset_split_datasets()
+        else:
+            dm = DataManager(root=root)
+            for dataset in ccs_val_datasets:
+                if dataset not in all_train_datasets:
+                    dm.add_dataset(dataset, model, layer, split=None, center=True, device=device)
+
         for medley, train_size in zip(medley_combination, train_sizes):
             for dataset in medley:
                 dm.add_dataset(dataset, model, layer, split=split, n_training_samples=train_size, seed=seed, center=True, device=device)
-
-        for dataset in ccs_val_datasets:
-            if dataset not in all_train_datasets:
-                dm.add_dataset(dataset, model, layer, split=None, center=True, device=device)
 
         train_acts, train_labels, train_neg_acts = [], [], []
         for medley in medley_combination:
@@ -315,7 +342,6 @@ if __name__ == "__main__":
             })
     print(f"Finished oracles:")
 
-    print(f"{accs=}")
     df = pd.DataFrame(accs)
     df.to_csv(save_csv_path)
     print(f"Saved results to {save_csv_path}.")

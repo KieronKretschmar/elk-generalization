@@ -104,25 +104,18 @@ class DataManager:
         limit_n is the number of samples. If limit_n is None, then all samples are used
         """
         assert split is None or n_training_samples is None, "Training samples should not be limited by split and limit at once"
-        print(f"{split=}, {n_training_samples=}")
         dataset_path = self.root / dataset_name / model_name / "full"
         acts = collect_acts(dataset_path, layer=layer, center=center, scale=scale, device=device)
         labels = t.load(dataset_path / "labels.pt").to(device).float()
 
         if split is None and n_training_samples is None:
-            if n_training_samples is None:
-                self.data[dataset_name] = acts, labels
-            else:
-                self.data[dataset_name] = acts, labels
-            print(f"Added {len(self.data[dataset_name][0])} samples from {dataset_name}.")
+            self.data[dataset_name] = acts, labels
 
         else:
-
             if split is not None:
                 assert 0 < split and split < 1
                 n_training_samples = int(split * len(acts))
-            if n_training_samples is not None:
-                assert 0 < n_training_samples and n_training_samples <= len(acts), f"Tried to obtain {n_training_samples} training samples, but the dataset only has {len(acts)} samples."
+            assert 0 < n_training_samples and n_training_samples <= len(acts), f"Tried to obtain {n_training_samples} training samples, but the dataset only has {len(acts)} samples."
             if seed is None:
                 seed = random.randint(0, 1000)
             t.manual_seed(seed)
@@ -131,7 +124,6 @@ class DataManager:
             self.data['train'][dataset_name] = acts[train], labels[train]
             self.data['val'][dataset_name] = acts[val], labels[val]
 
-            print(f"Added {sum(train)} training and {sum(val)} validation samples from {dataset_name}.")
             if sum(val) < 0.2 * len(acts):
                 print(f"Warning: The evaluation dataset for {dataset_name} only contains {sum(val)} samples.")
 
@@ -175,7 +167,12 @@ class DataManager:
 
         self.data = dict_recurse(self.data, lambda x : (t.mm(x[0], self.proj), x[1]))
     
-
+    def reset_split_datasets(self):
+        """
+        Removes all datasets that were loaded with train/val splits.
+        """
+        self.data['train'] = {}
+        self.data['val'] = {}
 
 
 
