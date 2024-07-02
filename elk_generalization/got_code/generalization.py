@@ -86,13 +86,17 @@ if __name__ == "__main__":
 
     # SUPERVISED
     train_medlies  = [
-        ['got/cities'],
+        # ['got/cities'],
         ['got/cities', 'got/neg_cities'],
-        ['got/larger_than'],
+        # ['got/larger_than'],
         ['got/larger_than', 'got/smaller_than'],
         ['got/sp_en_trans', 'got/neg_sp_en_trans'],
         ['got/companies_true_false'],
-        ['got/counterfact_true', 'got/counterfact_false'],
+        # ['got/counterfact_true', 'got/counterfact_false'],
+        ['azaria/animals_true_false', 'azaria/neg_animals_true_false'],
+        ['azaria/elements_true_false', 'azaria/neg_elements_true_false'],
+        ['azaria/facts_true_false', 'azaria/neg_facts_true_false'],
+        ['azaria/inventions_true_false', 'azaria/neg_inventions_true_false'],
     ]
 
     supervised_val_datasets = [
@@ -109,6 +113,14 @@ if __name__ == "__main__":
         'got/counterfact_true',
         'got/counterfact_false',   
         # 'got/counterfact_true_false'    # We use the true/false datasets above for validation instead
+        'azaria/animals_true_false',
+        'azaria/neg_animals_true_false',
+        'azaria/elements_true_false',
+        'azaria/neg_elements_true_false',
+        'azaria/facts_true_false',
+        'azaria/neg_facts_true_false',
+        'azaria/inventions_true_false',
+        'azaria/neg_inventions_true_false',
     ]
     SupervisedProbeClasses = [
         LRProbe, 
@@ -219,7 +231,7 @@ if __name__ == "__main__":
         'azaria/facts_true_false',
         'azaria/neg_facts_true_false',
         'azaria/inventions_true_false',
-        'azaria/inventions_true_false'
+        'azaria/neg_inventions_true_false',
     ]
 
     # # Configuration to reproduce part of Figure 5 from Geometry of Truth paper
@@ -314,29 +326,56 @@ if __name__ == "__main__":
     print(f"Finished unsupervised.")
 
     # ORACLE
-    oracle_val_datasets = list(set(supervised_val_datasets + ccs_val_datasets))
-    oracle_accs = {str(probe_class) : [] for probe_class in SupervisedProbeClasses}
-    for ProbeClass in SupervisedProbeClasses:
+    oracle_val_datasets = [
+        'got/cities',
+        'got/neg_cities',
+        'got/larger_than',
+        'got/smaller_than',
+        'got/sp_en_trans',
+        'got/neg_sp_en_trans',
+        'got/cities_cities_conj',
+        'got/cities_cities_disj',
+        'got/companies_true_false',
+        'got/common_claim_true_false',
+        'got/counterfact_true',
+        'got/counterfact_false',  
+        'azaria/animals_true_false',
+        'azaria/neg_animals_true_false',
+        'azaria/elements_true_false',
+        'azaria/neg_elements_true_false',
+        'azaria/facts_true_false',
+        'azaria/neg_facts_true_false',
+        'azaria/inventions_true_false',
+        'azaria/neg_inventions_true_false',
+    ]
+    OracleProbeClasses = [
+        LRProbe, 
+        MMProbe,
+        ]
+
+    oracle_accs = {str(probe_class) : [] for probe_class in OracleProbeClasses}
+    for ProbeClass in OracleProbeClasses:
         for dataset in oracle_val_datasets:
             print(f"Starting training oracle {str(ProbeClass)} on {dataset}.")
             dm = DataManager(root=root)
-            dm.add_dataset(dataset, model, layer, split=split, seed=seed, device=device)
-            train_acts, train_labels = dm.get('train')
-            probe = ProbeClass.from_data(train_acts, train_labels, device=device)
+            # Load data with 0 training samples so all samples are validation (which are used for training the oracles)
+            dm.add_dataset(dataset, model, layer, split=split, n_training_samples=0, seed=seed, device=device)
 
+            # Train and evaluate on validation dataset
             acts, labels = dm.data['val'][dataset]
+            probe = ProbeClass.from_data(acts, labels, device=device)
             acc = (probe(acts, iid=True).round() == labels).float().mean().item()
             accs.append({
                 "model": model,
                 "layer": layer,
                 "reporter": str(ProbeClass),
                 "train_desc": dataset,
-                "eval_dataset": val_dataset,
-                "n_train_datasets": len(medley_combination),
+                "eval_dataset": dataset,
+                "n_train_datasets": 1,
                 "oracle": True,
                 "transfer_type": transfer_type([dataset], dataset),
                 "accuracy": acc,
-                "train_size": len(train_acts),
+                "train_size": len(acts),
                 "test_size": len(acts),
                 "seed": seed, 
             })

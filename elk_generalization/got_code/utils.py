@@ -113,9 +113,9 @@ class DataManager:
 
         else:
             if split is not None:
-                assert 0 < split and split < 1
+                assert 0 <= split and split < 1
                 n_training_samples = int(split * len(acts))
-            assert 0 < n_training_samples and n_training_samples <= len(acts), f"Tried to obtain {n_training_samples} training samples, but the dataset only has {len(acts)} samples."
+            assert 0 <= n_training_samples and n_training_samples <= len(acts), f"Tried to obtain {n_training_samples} training samples, but the dataset only has {len(acts)} samples."
             if seed is None:
                 seed = random.randint(0, 1000)
             t.manual_seed(seed)
