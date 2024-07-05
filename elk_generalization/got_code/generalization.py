@@ -139,7 +139,7 @@ if __name__ == "__main__":
         medley_combinations.extend(combinations(train_medlies, r=k))
 
     for medley_combination in medley_combinations:
-        all_train_datasets = [ds for medley in medley_combinations for ds in medley]
+        all_train_datasets = [ds for medley in medley_combination for ds in medley]
         medley_train_sizes = partition_sizes(train_examples, len(medley_combination))
 
         if preload_validation_data:
