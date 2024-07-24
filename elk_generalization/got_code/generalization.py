@@ -421,6 +421,35 @@ if __name__ == "__main__":
                 "test_size": len(acts),
                 "seed": seed, 
             })
+
+        # Finally, train oracle on a uniform mixture of all datasets at once
+        min_ds_size = min([len(dm.data['val'][dataset][0]) for dataset in oracle_val_datasets])
+        acts, labels = [], []
+        for dataset in oracle_val_datasets:
+            acts.append(dm.data['val'][dataset][0][:min_ds_size])
+            labels.append(dm.data['val'][dataset][1][:min_ds_size])
+            print(f"Added {len(acts[-1])} samples from {dataset}.")
+        acts = t.cat(acts)
+        labels = t.cat(labels)
+        probe = ProbeClass.from_data(acts, labels, device=device)
+        metrics = evaluate_probe(probe, acts, labels, iid=False)
+        accs.append({
+            "model": model,
+            "layer": layer,
+            "reporter": str(ProbeClass),
+            "train_desc": to_str(oracle_val_datasets),
+            "all_train_datasets": oracle_val_datasets,
+            "eval_dataset": dataset,
+            "n_train_datasets": len(oracle_val_datasets),
+            "oracle": True,
+            "transfer_type": "no transfer",
+            "accuracy": metrics["accuracy"],
+            "auroc": metrics["auroc"],
+            "train_size": len(acts),
+            "test_size": len(acts),
+            "seed": seed,
+        })
+        
     print(f"Finished oracles:")
 
     df = pd.DataFrame(accs)
