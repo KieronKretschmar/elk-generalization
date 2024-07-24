@@ -92,12 +92,13 @@ if __name__ == "__main__":
         return sizes
     
     def evaluate_probe(probe, acts, labels, iid=False):
-        preds = probe.pred(acts, iid=iid).detach().cpu()
+        logits = probe.forward(acts, iid=iid).detach().cpu()
+        preds = logits.round()
         labels = labels.detach().cpu()
         acc = (preds == labels).float().mean().item()
         if len(labels.unique()) > 1:
             auroc = roc_auc_score(
-                labels.numpy(), preds.numpy()
+                labels.numpy(), logits.numpy()
             )
         else:
             auroc = np.NaN
