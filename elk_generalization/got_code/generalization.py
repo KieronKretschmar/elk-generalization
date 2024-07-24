@@ -6,8 +6,10 @@ import argparse
 from pathlib import Path
 import pandas as pd
 import os
+import numpy as np
 from itertools import combinations
 import time
+from sklearn.metrics import roc_auc_score
 
 from utils import DataManager, transfer_type
 from probes import LRProbe, MMProbe, CCSProbe, MMProbe_Mallen, CrcReporter
@@ -33,6 +35,11 @@ if __name__ == "__main__":
         parser.add_argument("--min-n-train-datasets", type=int, help="Minimum number of combinations of datasets to train on")
         parser.add_argument("--max-n-train-datasets", type=int, help="Maximum number of combinations of datasets to train on")
         parser.add_argument("--train-examples", type=int, default=None)
+        parser.add_argument(
+            "--apply-train-examples-per-dataset", 
+            action="store_true", 
+            help="If specified, the specified number of train-examples will be applied to each training dataset instead of the total number."
+        )
         parser.add_argument("--split", type=float, default=None, help="Fraction of dataset used for training.")
         parser.add_argument("--seed", type=int, default=1234)
         parser.add_argument("--save-csv-path", type=Path, help="Path to save the dataframe as csv.")
@@ -46,6 +53,7 @@ if __name__ == "__main__":
     min_n_train_datasets = args.min_n_train_datasets
     max_n_train_datasets = args.max_n_train_datasets
     train_examples = args.train_examples
+    apply_train_examples_per_dataset = args.apply_train_examples_per_dataset
     split = args.split
     save_csv_path = args.save_csv_path
     seed = args.seed
@@ -63,6 +71,11 @@ if __name__ == "__main__":
     def to_str_combination(c):
         return "&".join([to_str(i) for i in c])
     
+    def medleys_from_str(desc):
+        medleys = []
+        for medley in desc.split('&'):
+            medleys.append(medley.split('+')) 
+
     def partition_sizes(n, k):
         # Determines n1,n2,...,nk such that they are as similar as possible while n1+...nk=n
         # if n is None returns a list of Nones of length k
@@ -77,7 +90,18 @@ if __name__ == "__main__":
             sizes.append(size)
         assert sum(sizes) == n
         return sizes
-
+    
+    def evaluate_probe(probe, acts, labels, iid=False):
+        preds = probe.pred(acts, iid=iid).detach().cpu()
+        labels = labels.detach().cpu()
+        acc = (preds == labels).float().mean().item()
+        if len(labels.unique()) > 1:
+            auroc = roc_auc_score(
+                labels.numpy(), preds.numpy()
+            )
+        else:
+            auroc = np.NaN
+        return {"accuracy": acc, "auroc": auroc}
 
     accs = []
 
@@ -87,16 +111,16 @@ if __name__ == "__main__":
     # SUPERVISED
     train_medlies  = [
         # ['got/cities'],
-        ['got/cities', 'got/neg_cities'],
+        ['got/cities', 'got/neg_cities'],                                           # n=2x1496
         # ['got/larger_than'],
-        ['got/larger_than', 'got/smaller_than'],
-        ['got/sp_en_trans', 'got/neg_sp_en_trans'],
-        ['got/companies_true_false'],
-        # ['got/counterfact_true', 'got/counterfact_false'],
-        ['azaria/animals_true_false', 'azaria/neg_animals_true_false'],
-        ['azaria/elements_true_false', 'azaria/neg_elements_true_false'],
-        ['azaria/facts_true_false', 'azaria/neg_facts_true_false'],
-        ['azaria/inventions_true_false', 'azaria/neg_inventions_true_false'],
+        ['got/larger_than', 'got/smaller_than'],                                    # n=2x1980
+        ['got/sp_en_trans', 'got/neg_sp_en_trans'],                                 # n=2x354
+        ['got/companies_true_false'],                                               # n=1200
+        # ['got/counterfact_true', 'got/counterfact_false'],                        # n=2x15982, broken
+        ['azaria/animals_true_false', 'azaria/neg_animals_true_false'],             # n=2x1008
+        ['azaria/elements_true_false', 'azaria/neg_elements_true_false'],           # n=2x930
+        ['azaria/facts_true_false', 'azaria/neg_facts_true_false'],                 # n=2x437
+        ['azaria/inventions_true_false', 'azaria/neg_inventions_true_false'],       # n=2x876
     ]
 
     supervised_val_datasets = [
@@ -110,8 +134,8 @@ if __name__ == "__main__":
         'got/cities_cities_disj',
         'got/companies_true_false',
         'got/common_claim_true_false',
-        'got/counterfact_true',
-        'got/counterfact_false',   
+        # 'got/counterfact_true', # broken
+        # 'got/counterfact_false',  # broken 
         # 'got/counterfact_true_false'    # We use the true/false datasets above for validation instead
         'azaria/animals_true_false',
         'azaria/neg_animals_true_false',
@@ -153,7 +177,9 @@ if __name__ == "__main__":
 
         for medley, medley_train_size in zip(medley_combination, medley_train_sizes):
             train_sizes = partition_sizes(medley_train_size, len(medley))
+            print(f"{medley_train_size=};{medley=};{train_sizes=}")
             for dataset, train_size in zip(medley, train_sizes):
+                train_size = train_examples if apply_train_examples_per_dataset else train_size
                 dm.add_dataset(dataset, model, layer, split=split, n_training_samples=train_size, seed=seed, center=True, device=device)
 
 
@@ -168,22 +194,23 @@ if __name__ == "__main__":
             for val_dataset in supervised_val_datasets:
                 if val_dataset in medley:
                     acts, labels = dm.data['val'][val_dataset]
-                    acc = (
-                        probe.pred(acts, iid=True) == labels
-                    ).float().mean().item()
+                    metrics = evaluate_probe(probe, acts, labels, iid=False)
                 else:
                     acts, labels = dm.data[val_dataset]
-                    acc = (probe.pred(acts.float(), iid=False) == labels).float().mean().item()
+                    metrics = evaluate_probe(probe, acts, labels, iid=False)
+
                 accs.append({
                     "model": model,
                     "layer": layer,
                     "reporter": str(ProbeClass),
                     "train_desc": to_str_combination(medley_combination),
+                    "all_train_datasets": all_train_datasets,
                     "eval_dataset": val_dataset,
                     "n_train_datasets": len(medley_combination),
                     "oracle": False,
                     "transfer_type": transfer_type(all_train_datasets, val_dataset),
-                    "accuracy": acc,
+                    "accuracy": metrics["accuracy"],
+                    "auroc": metrics["auroc"],
                     "train_size": len(train_acts),
                     "test_size": len(acts),
                     "seed": seed, 
@@ -200,7 +227,7 @@ if __name__ == "__main__":
     ccs_base_medlies = [
         ['got/cities', 'got/neg_cities'],                                       # n=1496
         ['got/larger_than', 'got/smaller_than'],                                # n=1980
-        ['got/counterfact_true', 'got/counterfact_false'],                      # n=15982
+        # ['got/counterfact_true', 'got/counterfact_false'],                      # n=15982, broken
         ['got/sp_en_trans', 'got/neg_sp_en_trans'],                             # n=354
         ['azaria/animals_true_false', 'azaria/neg_animals_true_false'],         # n=1008
         ['azaria/elements_true_false', 'azaria/neg_elements_true_false'],       # n=930
@@ -222,8 +249,8 @@ if __name__ == "__main__":
         'got/cities_cities_disj',
         'got/companies_true_false',
         'got/common_claim_true_false',
-        'got/counterfact_true',
-        'got/counterfact_false',  
+        # 'got/counterfact_true', # broken
+        # 'got/counterfact_false', # broken
         'azaria/animals_true_false',
         'azaria/neg_animals_true_false',
         'azaria/elements_true_false',
@@ -281,8 +308,10 @@ if __name__ == "__main__":
                 if dataset not in all_train_datasets:
                     dm.add_dataset(dataset, model, layer, split=None, center=True, device=device)
 
+        # Load training datasets uniform specified training sizes
         for medley, train_size in zip(medley_combination, train_sizes):
             for dataset in medley:
+                train_size = train_examples if apply_train_examples_per_dataset else train_size
                 dm.add_dataset(dataset, model, layer, split=split, n_training_samples=train_size, seed=seed, center=True, device=device)
 
         train_acts, train_labels, train_neg_acts = [], [], []
@@ -307,17 +336,19 @@ if __name__ == "__main__":
                     acts, labels = dm.data['val'][val_dataset]
                 else:
                     acts, labels = dm.data[val_dataset]
-                acc = (probe.pred(acts) == labels).float().mean().item()
+                metrics = evaluate_probe(probe, acts, labels)
                 accs.append({
                     "model": model,
                     "layer": layer,
                     "reporter": str(ProbeClass),
                     "train_desc": to_str_combination(medley_combination),
+                    "all_train_datasets": all_train_datasets,
                     "eval_dataset": val_dataset,
                     "n_train_datasets": len(medley_combination),
                     "oracle": False,
                     "transfer_type": transfer_type(all_train_datasets, val_dataset),
-                    "accuracy": acc,
+                    "accuracy": metrics["accuracy"],
+                    "auroc": metrics["auroc"],
                     "train_size": len(train_acts),
                     "test_size": len(acts),
                     "seed": seed, 
@@ -337,8 +368,8 @@ if __name__ == "__main__":
         'got/cities_cities_disj',
         'got/companies_true_false',
         'got/common_claim_true_false',
-        'got/counterfact_true',
-        'got/counterfact_false',  
+        # 'got/counterfact_true', # broken
+        # 'got/counterfact_false', # broken
         'azaria/animals_true_false',
         'azaria/neg_animals_true_false',
         'azaria/elements_true_false',
@@ -346,35 +377,46 @@ if __name__ == "__main__":
         'azaria/facts_true_false',
         'azaria/neg_facts_true_false',
         'azaria/inventions_true_false',
-        'azaria/neg_inventions_true_false',
+        'azaria/neg_inventions_true_false'
     ]
     OracleProbeClasses = [
         LRProbe, 
         MMProbe,
         ]
+    
+    if preload_validation_data:
+        # Load data for all datasets
+        dm = DataManager(root=root)
+        for dataset in oracle_val_datasets:
+            # Load data with 0 training samples so all samples are validation (which are used for training the oracles)
+            dm.add_dataset(dataset, model, layer, split=None, n_training_samples=0, seed=seed, device=device)
 
     oracle_accs = {str(probe_class) : [] for probe_class in OracleProbeClasses}
     for ProbeClass in OracleProbeClasses:
         for dataset in oracle_val_datasets:
-            print(f"Starting training oracle {str(ProbeClass)} on {dataset}.")
-            dm = DataManager(root=root)
-            # Load data with 0 training samples so all samples are validation (which are used for training the oracles)
-            dm.add_dataset(dataset, model, layer, split=split, n_training_samples=0, seed=seed, device=device)
+            print(f"Starting training oracle {str(ProbeClass)} on {dataset}.") 
+            if not preload_validation_data:
+                dm = DataManager(root=root)
+                # Load data with 0 training samples so all samples are validation (which are used for training the oracles)
+                dm.add_dataset(dataset, model, layer, split=None, n_training_samples=0, seed=seed, device=device)
 
             # Train and evaluate on validation dataset
             acts, labels = dm.data['val'][dataset]
             probe = ProbeClass.from_data(acts, labels, device=device)
-            acc = (probe(acts, iid=True).round() == labels).float().mean().item()
+            metrics = evaluate_probe(probe, acts, labels, iid=False)
+
             accs.append({
                 "model": model,
                 "layer": layer,
                 "reporter": str(ProbeClass),
                 "train_desc": dataset,
+                "all_train_datasets": [dataset],
                 "eval_dataset": dataset,
                 "n_train_datasets": 1,
                 "oracle": True,
                 "transfer_type": transfer_type([dataset], dataset),
-                "accuracy": acc,
+                "accuracy": metrics["accuracy"],
+                "auroc": metrics["auroc"],
                 "train_size": len(acts),
                 "test_size": len(acts),
                 "seed": seed, 
