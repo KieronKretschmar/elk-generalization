@@ -1,0 +1,123 @@
+#!/bin/bash
+
+#SBATCH --partition=gpu
+#SBATCH --gpus=1
+#SBATCH --job-name=DiversifyFull
+#SBATCH --ntasks=1
+#SBATCH --time=16:00:00
+#SBATCH --output=./jobs/diversify_remake/output/full_%A.out
+#SBATCH --exclude=gcn45 # this node seems buggy
+
+module purge
+module load 2023
+module load Anaconda3/2023.07-2
+
+cd $HOME/thesis/elk-generalization/
+
+source activate elk-generalization
+
+data_dir="/scratch-shared/tmp.S8HctVrpjHkkretschmar"
+export HF_HOME=$data_dir/hf_cache
+
+# General vars
+model_names=("meta-llama/Llama-2-13b-hf")
+supervised_dataset_names=(got/cities got/larger_than got/sp_en_trans got/cities_cities_conj got/cities_cities_disj got/common_claim_true_false got/companies_true_false got/counterfact_true_false got/neg_cities got/neg_sp_en_trans got/smaller_than got/counterfact_true got/counterfact_false azaria/animals_true_false azaria/neg_animals_true_false azaria/elements_true_false azaria/neg_elements_true_false azaria/facts_true_false azaria/neg_facts_true_false azaria/inventions_true_false azaria/neg_inventions_true_false)
+
+# Extract
+max_examples=(99999)
+splits=(full)
+supervised_dataset_names=(got/counterfact_true got/counterfact_false)
+for (( i=0; i<${#splits[@]}; i++ )); do
+    max_example=${max_examples[i]}
+    split=${splits[i]}
+
+    # Supervised datasets
+    srun python -u elk_generalization/elk/extract_hiddens_got.py \
+        --models ${model_names[@]} \
+        --data-dir $data_dir/experiments/diversify_remake \
+        --datasets ${supervised_dataset_names[@]} \
+        --max-examples $max_example \
+        --splits $split \
+        --label-cols "label"\
+        --prevent-skip
+done
+
+# Transfer
+seeds=(2 3 4)
+
+# Transfer 3-8, 1000 fixed total train-examples
+for (( i=0; i<${#seeds[@]}; i++ )); do
+    seed=${seeds[i]}
+    srun python -u elk_generalization/got_code/generalization.py \
+        --data-dir $data_dir/experiments/diversify_remake \
+        --model meta-llama/Llama-2-13b-hf \
+        --layer 13 \
+        --train-examples 1000 \
+        --min-n-train-datasets 3 \
+        --max-n-train-datasets 8 \
+        --save-csv-path $data_dir/experiments/diversify_remake/summary_${train_examples}_total_$seed.csv \
+        --seed $seed
+        # --split 0.8 \
+done
+
+# Transfer 1-8, 500 total train-examples
+for (( i=0; i<${#seeds[@]}; i++ )); do
+    seed=${seeds[i]}
+    srun python -u elk_generalization/got_code/generalization.py \
+        --data-dir $data_dir/experiments/diversify_remake \
+        --model meta-llama/Llama-2-13b-hf \
+        --layer 13 \
+        --train-examples 500 \
+        --min-n-train-datasets 1 \
+        --max-n-train-datasets 8 \
+        --save-csv-path $data_dir/experiments/diversify_remake/summary_${train_examples}_$seed.csv \
+        --seed $seed
+        # --split 0.8 \
+done
+
+# Transfer 1-8, fixed train-examples per dataset
+train_examples_options=(125 250)
+for (( j=0; j<${#train_examples[@]}; j++ )); do
+    train_examples=${train_examples[j]}
+    for (( i=0; i<${#seeds[@]}; i++ )); do
+        seed=${seeds[i]}
+        srun python -u elk_generalization/got_code/generalization.py \
+            --data-dir $data_dir/experiments/diversify_remake \
+            --model meta-llama/Llama-2-13b-hf \
+            --layer 13 \
+            --train-examples $train_examples \
+            --apply-train-examples-per-dataset \
+            --min-n-train-datasets 1 \
+            --max-n-train-datasets 8 \
+            --save-csv-path $data_dir/experiments/diversify_remake/summary_lr_+mm_2x${train_examples}_per_ds_$seed.csv \
+            --seed $seed
+            # --split 0.8 \
+    done
+done
+
+# Transfer 1-8, 500 total train-examples, tuple-inference
+for (( i=0; i<${#seeds[@]}; i++ )); do
+    seed=${seeds[i]}
+    srun python -u elk_generalization/got_code/generalization.py \
+        --data-dir $data_dir/experiments/diversify_remake \
+        --model meta-llama/Llama-2-13b-hf \
+        --layer 13 \
+        --train-examples 500 \
+        --min-n-train-datasets 1 \
+        --max-n-train-datasets 8 \
+        --save-csv-path $data_dir/experiments/diversify_remake/summary_${train_examples}_tuple_inference_$seed.csv \
+        --seed $seed \
+        --tuple-inference
+        # --split 0.8 \
+done
+
+# Transfer reproduction
+srun python -u elk_generalization/got_code/generalization.py \
+    --data-dir $data_dir/experiments/diversify_remake \
+    --model meta-llama/Llama-2-13b-hf \
+    --layer 13 \
+    --split 0.8 \
+    --max-n-train-datasets 6 \
+    --save-csv-path $data_dir/experiments/diversify_remake/summary_repr_1000.csv \
+    --seed 1000
+    # --train-examples 500 \

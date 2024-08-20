@@ -1,0 +1,34 @@
+#!/bin/bash
+
+#SBATCH --partition=gpu
+#SBATCH --gpus=1
+#SBATCH --job-name=PCAVIZ
+#SBATCH --ntasks=1
+#SBATCH --time=1:00:00
+#SBATCH --output=./jobs/diversify_remake/output/pca_viz_%A.out
+#SBATCH --exclude=gcn45 # this node seems buggy
+
+module purge
+module load 2023
+module load Anaconda3/2023.07-2
+
+cd $HOME/thesis/elk-generalization/
+
+source activate elk-generalization
+
+data_dir="/scratch-shared/tmp.S8HctVrpjHkkretschmar"
+export HF_HOME=$data_dir/hf_cache
+
+# Settings
+# Excluding got/smaller_than and got/larger_than as they're not negations 
+train_dataset_names=(got/cities got/neg_cities got/sp_en_trans got/neg_sp_en_trans azaria/animals_true_false azaria/neg_animals_true_false azaria/elements_true_false azaria/neg_elements_true_false azaria/facts_true_false azaria/neg_facts_true_false azaria/inventions_true_false azaria/neg_inventions_true_false)
+reduction="contrast"
+
+srun python -u elk_generalization/results/pca_viz.py \
+    --data-dir $data_dir/experiments/diversify_remake \
+    --model meta-llama/Llama-2-13b-hf \
+    --layer 13 \
+    --fit-datasets ${train_dataset_names[@]} \
+    --reduction ${reduction} \
+    --center \
+    --save-path $data_dir/experiments/diversify_remake/pca_centered \
