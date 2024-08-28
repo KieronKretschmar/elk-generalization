@@ -46,13 +46,14 @@ done
 seeds=(2 3 4)
 
 # Transfer 3-8, 1000 fixed total train-examples
+train_examples=1000
 for (( i=0; i<${#seeds[@]}; i++ )); do
     seed=${seeds[i]}
     srun python -u elk_generalization/got_code/generalization.py \
         --data-dir $data_dir/experiments/diversify_remake \
         --model meta-llama/Llama-2-13b-hf \
         --layer 13 \
-        --train-examples 1000 \
+        --train-examples $train_examples \
         --min-n-train-datasets 3 \
         --max-n-train-datasets 8 \
         --save-csv-path $data_dir/experiments/diversify_remake/summary_${train_examples}_total_$seed.csv \
@@ -61,13 +62,14 @@ for (( i=0; i<${#seeds[@]}; i++ )); do
 done
 
 # Transfer 1-8, 500 total train-examples
+train_examples=500
 for (( i=0; i<${#seeds[@]}; i++ )); do
     seed=${seeds[i]}
     srun python -u elk_generalization/got_code/generalization.py \
         --data-dir $data_dir/experiments/diversify_remake \
         --model meta-llama/Llama-2-13b-hf \
         --layer 13 \
-        --train-examples 500 \
+        --train-examples $train_examples \
         --min-n-train-datasets 1 \
         --max-n-train-datasets 8 \
         --save-csv-path $data_dir/experiments/diversify_remake/summary_${train_examples}_$seed.csv \
@@ -77,8 +79,8 @@ done
 
 # Transfer 1-8, fixed train-examples per dataset
 train_examples_options=(125 250)
-for (( j=0; j<${#train_examples[@]}; j++ )); do
-    train_examples=${train_examples[j]}
+for (( j=0; j<${#train_examples_options[@]}; j++ )); do
+    train_examples=${train_examples_options[j]}
     for (( i=0; i<${#seeds[@]}; i++ )); do
         seed=${seeds[i]}
         srun python -u elk_generalization/got_code/generalization.py \
@@ -96,13 +98,14 @@ for (( j=0; j<${#train_examples[@]}; j++ )); do
 done
 
 # Transfer 1-8, 500 total train-examples, tuple-inference
+train_examples=500
 for (( i=0; i<${#seeds[@]}; i++ )); do
     seed=${seeds[i]}
     srun python -u elk_generalization/got_code/generalization.py \
         --data-dir $data_dir/experiments/diversify_remake \
         --model meta-llama/Llama-2-13b-hf \
         --layer 13 \
-        --train-examples 500 \
+        --train-examples $train_examples \
         --min-n-train-datasets 1 \
         --max-n-train-datasets 8 \
         --save-csv-path $data_dir/experiments/diversify_remake/summary_${train_examples}_tuple_inference_$seed.csv \
