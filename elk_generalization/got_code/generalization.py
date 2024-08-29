@@ -284,6 +284,8 @@ if __name__ == "__main__":
     #     'got/counterfact_false',
     # ]
 
+    unsupervised_train_tuples = int(train_examples / 2)
+
     # Load all full datasets into the data manager as they're used for evaluation only and are thus constant between medley_combinations
     if preload_validation_data:
         dm = DataManager(root=root)
@@ -298,7 +300,7 @@ if __name__ == "__main__":
         print(f"Starting on medley {i+1}/{len(medley_combinations)}: {to_str_combination(medley_combination)}")
         tik = time.time()
         all_train_datasets = [ds for medley in medley_combination for ds in medley]
-        train_sizes = partition_sizes(train_examples, len(medley_combination))
+        train_sizes = partition_sizes(unsupervised_train_tuples, len(medley_combination))
         
         if preload_validation_data:
             # Remove split datasets as they may have to be re-loaded with different splits depending on the medley_combination
@@ -312,7 +314,7 @@ if __name__ == "__main__":
         # Load training datasets uniform specified training sizes
         for medley, train_size in zip(medley_combination, train_sizes):
             for dataset in medley:
-                train_size = train_examples if apply_train_examples_per_dataset else train_size
+                train_size = unsupervised_train_tuples if apply_train_examples_per_dataset else train_size
                 dm.add_dataset(dataset, model, layer, split=split, n_training_samples=train_size, seed=seed, center=True, device=device)
 
         train_acts, train_labels, train_neg_acts = [], [], []
