@@ -195,9 +195,11 @@ if __name__ == "__main__":
             for val_dataset in supervised_val_datasets:
                 if val_dataset in medley:
                     acts, labels = dm.data['val'][val_dataset]
+                    if len(acts) == 0: continue
                     metrics = evaluate_probe(probe, acts, labels, iid=False)
                 else:
                     acts, labels = dm.data[val_dataset]
+                    if len(acts) == 0: continue
                     metrics = evaluate_probe(probe, acts, labels, iid=False)
 
                 accs.append({
@@ -339,6 +341,7 @@ if __name__ == "__main__":
                     acts, labels = dm.data['val'][val_dataset]
                 else:
                     acts, labels = dm.data[val_dataset]
+                if len(acts) == 0: continue
                 metrics = evaluate_probe(probe, acts, labels)
                 accs.append({
                     "model": model,
