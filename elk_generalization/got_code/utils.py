@@ -71,9 +71,9 @@ def cat_data(d):
     return t.cat(all_acts, dim=0), t.cat(all_labels, dim=0)
 
 def transfer_type(train_datasets, eval_dataset):
-    """Returns 'seen' if eval_dataset is in train_datasets.
-    Returns 'unseen' if eval_dataset is not in train_datasets, but a related dataset is.
-    Otherwise, returns 'strictly_unseen'.
+    """Returns 'no transfer' if eval_dataset is in train_datasets.
+    Returns 'semi transfer' if eval_dataset is not in train_datasets, but a related dataset is.
+    Otherwise, returns 'full transfer'.
     """
     if eval_dataset in train_datasets:
         return "no transfer"
