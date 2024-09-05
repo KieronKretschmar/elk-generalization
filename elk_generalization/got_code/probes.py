@@ -175,7 +175,7 @@ class CrcReporter(nn.Module):
         # Learnable Platt scaling parameter
         self.scale = nn.Parameter(torch.ones(1, device=device, dtype=dtype))
 
-    def forward(self, hiddens: Tensor) -> Tensor:
+    def forward(self, hiddens: Tensor, iid = None) -> Tensor:
         return self.raw_forward(hiddens)
 
     def raw_forward(self, hiddens: Tensor) -> Tensor:
