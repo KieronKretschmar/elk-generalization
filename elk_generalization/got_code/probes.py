@@ -16,6 +16,12 @@ class LRProbe(t.nn.Module):
     def pred(self, x, iid=None):
         return self(x).round()
     
+    def forward_tuples(self, xs, iid=False):
+        y1 = self(xs[0], iid=iid)
+        y2 = self(xs[1], iid=iid)
+        pred = y2 - y1 + 0.5 # outputs should be centered around 0.5
+        return pred
+    
     def from_data(acts, labels, lr=0.001, weight_decay=0.1, epochs=1000, device='cpu'):
         acts, labels = acts.to(device), labels.to(device)
         probe = LRProbe(acts.shape[-1]).to(device)
@@ -51,6 +57,12 @@ class MMProbe(t.nn.Module):
 
     def pred(self, x, iid=False):
         return self(x, iid=iid).round()
+
+    def forward_tuples(self, xs, iid=False):
+        y1 = self(xs[0], iid=iid)
+        y2 = self(xs[1], iid=iid)
+        pred = y2 - y1 + 0.5 # outputs should be centered around 0.5
+        return pred
 
     def from_data(acts, labels, atol=1e-3, device='cpu'):
         acts, labels
@@ -163,7 +175,7 @@ class CrcReporter(nn.Module):
         # Learnable Platt scaling parameter
         self.scale = nn.Parameter(torch.ones(1, device=device, dtype=dtype))
 
-    def forward(self, hiddens: Tensor) -> Tensor:
+    def forward(self, hiddens: Tensor, iid = None) -> Tensor:
         return self.raw_forward(hiddens)
 
     def raw_forward(self, hiddens: Tensor) -> Tensor:

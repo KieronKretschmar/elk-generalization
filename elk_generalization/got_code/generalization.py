@@ -43,6 +43,7 @@ if __name__ == "__main__":
         parser.add_argument("--split", type=float, default=None, help="Fraction of dataset used for training.")
         parser.add_argument("--seed", type=int, default=1234)
         parser.add_argument("--save-csv-path", type=Path, help="Path to save the dataframe as csv.")
+        parser.add_argument("--tuple-inference", action="store_true", help="Flag to indicate that a statement and its negation are used for inference.")
 
         args = parser.parse_args()
     print(f"{args=}")
@@ -57,6 +58,7 @@ if __name__ == "__main__":
     split = args.split
     save_csv_path = args.save_csv_path
     seed = args.seed
+    tuple_inference = args.tuple_inference
 
     # Enabling preloading is less efficient in terms of memory, but more efficient in terms of compute
     preload_validation_data = True
@@ -91,8 +93,11 @@ if __name__ == "__main__":
         assert sum(sizes) == n
         return sizes
     
-    def evaluate_probe(probe, acts, labels, iid=False):
-        logits = probe.forward(acts, iid=iid).detach().cpu()
+    def evaluate_probe(probe, acts, labels, use_tuples_pred=False, iid=False):
+        if use_tuples_pred:
+            logits = probe.forward_tuples(acts, iid=iid).detach().cpu()
+        else:
+            logits = probe.forward(acts, iid=iid).detach().cpu()
         preds = logits.round()
         labels = labels.detach().cpu()
         acc = (preds == labels).float().mean().item()
@@ -147,6 +152,17 @@ if __name__ == "__main__":
         'azaria/inventions_true_false',
         'azaria/neg_inventions_true_false',
     ]
+
+    tuple_eval_medlies  = [
+        ['got/cities', 'got/neg_cities'],                                           # n=2x1496
+        ['got/larger_than', 'got/smaller_than'],                                    # n=2x1980
+        ['got/sp_en_trans', 'got/neg_sp_en_trans'],                                 # n=2x354
+        ['azaria/animals_true_false', 'azaria/neg_animals_true_false'],             # n=2x1008
+        ['azaria/elements_true_false', 'azaria/neg_elements_true_false'],           # n=2x930
+        ['azaria/facts_true_false', 'azaria/neg_facts_true_false'],                 # n=2x437
+        ['azaria/inventions_true_false', 'azaria/neg_inventions_true_false'],       # n=2x876
+    ]
+
     SupervisedProbeClasses = [
         LRProbe, 
         # MMProbe_Mallen,
@@ -177,7 +193,15 @@ if __name__ == "__main__":
                     dm.add_dataset(dataset, model, layer, split=None, center=True, device=device)
 
         for medley, medley_train_size in zip(medley_combination, medley_train_sizes):
-            train_sizes = partition_sizes(medley_train_size, len(medley))
+            # determine train_size for each dataset in medley
+            if tuple_inference and medley in tuple_eval_medlies:
+                # When doing tuple inference, we require corresponding statements and negated statements in test split
+                # we achieve this by using the same size and seed for each split
+                assert len(medley) == 2
+                train_sizes = [round(medley_train_size / len(medley))] * len(medley)
+            else:
+                train_sizes = partition_sizes(medley_train_size, len(medley))
+
             print(f"{medley_train_size=};{medley=};{train_sizes=}")
             for dataset, train_size in zip(medley, train_sizes):
                 train_size = train_examples if apply_train_examples_per_dataset else train_size
@@ -192,34 +216,71 @@ if __name__ == "__main__":
             probe = ProbeClass.from_data(train_acts, train_labels, device=device)
 
             # evaluate
-            for val_dataset in supervised_val_datasets:
-                if val_dataset in medley:
-                    acts, labels = dm.data['val'][val_dataset]
-                    if len(acts) == 0: continue
-                    metrics = evaluate_probe(probe, acts, labels, iid=False)
-                else:
-                    acts, labels = dm.data[val_dataset]
-                    if len(acts) == 0: continue
-                    metrics = evaluate_probe(probe, acts, labels, iid=False)
-
-                accs.append({
-                    "model": model,
-                    "layer": layer,
-                    "reporter": str(ProbeClass),
-                    "train_desc": to_str_combination(medley_combination),
-                    "all_train_datasets": all_train_datasets,
-                    "eval_dataset": val_dataset,
-                    "n_train_datasets": len(medley_combination),
-                    "oracle": False,
-                    "transfer_type": transfer_type(all_train_datasets, val_dataset),
-                    "accuracy": metrics["accuracy"],
-                    "auroc": metrics["auroc"],
-                    "train_size": len(train_acts),
-                    "test_size": len(acts),
-                    "seed": seed, 
-                })
+            if tuple_inference:
+                for eval_medley in tuple_eval_medlies:
+                    (val_dataset, neg_val_dataset) = eval_medley
+                    print("evaluating: ", val_dataset, neg_val_dataset)
+                    print(f"{val_dataset=}, {all_train_datasets=}, transfer_type={transfer_type(all_train_datasets, val_dataset)}")
+                    if val_dataset in all_train_datasets:
+                        assert neg_val_dataset in all_train_datasets
+                        # Use labels from second dataset, so they correspond to the index of the true statement
+                        acts, _ = dm.data['val'][val_dataset]
+                        neg_acts, labels = dm.data['val'][neg_val_dataset]
+                        if len(acts) == 0: continue
+                        metrics = evaluate_probe(probe, t.stack([acts, neg_acts]), labels, use_tuples_pred=True, iid=False)
+                    else:
+                        assert neg_val_dataset not in all_train_datasets, f"{eval_medley=}, {all_train_datasets=}"
+                        # Use labels from second dataset, so they correspond to the index of the true statement
+                        acts, _ = dm.data[val_dataset]
+                        neg_acts, labels = dm.data[neg_val_dataset]
+                        if len(acts) == 0: continue
+                        metrics = evaluate_probe(probe, t.stack([acts, neg_acts]), labels, use_tuples_pred=True, iid=False)
+                
+                    accs.append({
+                        "model": model,
+                        "layer": layer,
+                        "reporter": str(ProbeClass)+"_tuple_inference",
+                        "train_desc": to_str_combination(medley_combination),
+                        "all_train_datasets": all_train_datasets,
+                        "eval_dataset": to_str(eval_medley),
+                        "n_train_datasets": len(medley_combination),
+                        "oracle": False,
+                        "transfer_type": transfer_type(all_train_datasets, val_dataset),
+                        "accuracy": metrics["accuracy"],
+                        "auroc": metrics["auroc"],
+                        "train_size": len(train_acts),
+                        "test_size": len(acts),
+                        "seed": seed, 
+                    })
+            else:
+                for val_dataset in supervised_val_datasets:
+                    if val_dataset in medley:
+                        acts, labels = dm.data['val'][val_dataset]
+                        if len(acts) == 0: continue
+                        metrics = evaluate_probe(probe, acts, labels, iid=False)
+                    else:
+                        acts, labels = dm.data[val_dataset]
+                        if len(acts) == 0: continue
+                        metrics = evaluate_probe(probe, acts, labels, iid=False)
+                    accs.append({
+                        "model": model,
+                        "layer": layer,
+                        "reporter": str(ProbeClass),
+                        "train_desc": to_str_combination(medley_combination),
+                        "all_train_datasets": all_train_datasets,
+                        "eval_dataset": val_dataset,
+                        "n_train_datasets": len(medley_combination),
+                        "oracle": False,
+                        "transfer_type": transfer_type(all_train_datasets, val_dataset),
+                        "accuracy": metrics["accuracy"],
+                        "auroc": metrics["auroc"],
+                        "train_size": len(train_acts),
+                        "test_size": len(acts),
+                        "seed": seed, 
+                    })
 
     print(f"Finished supervised.")
+
 
     # UNSUPERVISED
     UnsupervisedProbeClasses = [
