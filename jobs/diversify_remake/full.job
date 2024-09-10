@@ -44,8 +44,8 @@ done
 
 # Transfer
 seeds=(101 102 103 104 105)
-train_examples_options=(500 1000)
 
+train_examples_options=(500 1000)
 for (( i=0; i<${#seeds[@]}; i++ )); do
     for (( j=0; j<${#train_examples_options[@]}; j++ )); do
         seed=${seeds[i]}
@@ -60,7 +60,15 @@ for (( i=0; i<${#seeds[@]}; i++ )); do
             --save-csv-path $data_dir/experiments/diversify_remake/thesis_summaries/summary_${train_examples}_total_$seed.csv \
             --seed $seed
             # --split 0.8 \
+    done
+done
 
+
+train_examples_options=(250 500)
+for (( i=0; i<${#seeds[@]}; i++ )); do
+    for (( j=0; j<${#train_examples_options[@]}; j++ )); do
+        seed=${seeds[i]}
+        train_examples=${train_examples_options[j]}
         srun python -u elk_generalization/got_code/generalization.py \
             --data-dir $data_dir/experiments/diversify_remake \
             --model meta-llama/Llama-2-13b-hf \
