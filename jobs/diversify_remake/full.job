@@ -4,7 +4,7 @@
 #SBATCH --gpus=1
 #SBATCH --job-name=DiversifyFull
 #SBATCH --ntasks=1
-#SBATCH --time=16:00:00
+#SBATCH --time=20:00:00
 #SBATCH --output=./jobs/diversify_remake/output/full_%A.out
 #SBATCH --exclude=gcn45 # this node seems buggy
 
@@ -57,7 +57,7 @@ for (( i=0; i<${#seeds[@]}; i++ )); do
             --train-examples $train_examples \
             --min-n-train-datasets 1 \
             --max-n-train-datasets 8 \
-            --save-csv-path $data_dir/experiments/diversify_remake/summary_${train_examples}_total_$seed.csv \
+            --save-csv-path $data_dir/experiments/diversify_remake/thesis_summaries/summary_${train_examples}_total_$seed.csv \
             --seed $seed
             # --split 0.8 \
 
@@ -68,7 +68,7 @@ for (( i=0; i<${#seeds[@]}; i++ )); do
             --train-examples $train_examples \
             --min-n-train-datasets 1 \
             --max-n-train-datasets 8 \
-            --save-csv-path $data_dir/experiments/diversify_remake/summary_${train_examples}_contrib_$seed.csv \
+            --save-csv-path $data_dir/experiments/diversify_remake/thesis_summaries/summary_${train_examples}_contrib_$seed.csv \
             --seed $seed \
             --apply-train-examples-per-dataset
             # --split 0.8 \
@@ -86,7 +86,7 @@ for (( i=0; i<${#seeds[@]}; i++ )); do
         --train-examples $train_examples \
         --min-n-train-datasets 1 \
         --max-n-train-datasets 8 \
-        --save-csv-path $data_dir/experiments/diversify_remake/summary_${train_examples}_tuple_inference_$seed.csv \
+        --save-csv-path $data_dir/experiments/diversify_remake/thesis_summaries/summary_${train_examples}_tuple_inference_$seed.csv \
         --seed $seed \
         --tuple-inference
         # --split 0.8 \
