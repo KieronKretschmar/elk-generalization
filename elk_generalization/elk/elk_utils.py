@@ -229,7 +229,18 @@ class DiversifyTrainingConfig():
     def from_descriptor(cls, descriptor):
         segments = descriptor.replace("-", "/").split('_')
         n_training_samples = int(segments[1].split("=")[1])
-        datasets = segments[2:]
+
+        # I messed up thinking that splitting by "_" splits between each dataset, but dataset names may also contain "_"
+        # To avoid re-running experiments, we now assume that each dataset here has a "/" in it's first segment
+        ds_segments = segments[2:]
+        ds_segment_start_indices = [i for i in range(len(ds_segments)) if "/" in ds_segments[i]]
+        datasets = []
+        for i, start_idx in enumerate(ds_segment_start_indices):
+            if start_idx < len(ds_segment_start_indices) - 1:
+                datasets.append("_".join(ds_segments[start_idx:ds_segment_start_indices[i+1]]))
+            else:
+                datasets.append("_".join(ds_segments[start_idx:]))
+
         return cls(training_datasets=datasets, n_training_samples=n_training_samples)
 
     def __init__(self, training_datasets, n_training_samples) -> None:
@@ -253,6 +264,23 @@ class DiversifyTrainingConfig():
         if "got/counterfact_tuples" in self.training_datasets:
             print(f"{desc=}")
         return desc
+    
+    def unseen_transfer(self, eval_dataset):
+        "Whether eval_dataset is not in the training data"
+        return eval_dataset not in self.training_datasets
+    
+    
+    def strictly_unseen_transfer(self, eval_dataset):
+        "Whether neither eval_dataset nor a related dataset created from it is in the training data"
+        if not self.unseen_transfer(eval_dataset):
+            return False
+        # List of keywords that are used in both datasets names if they are related
+        common_keywords = ["cities", "sp_en_trans", "than", "counterfact"]
+        for kw in common_keywords:
+            if kw in eval_dataset:
+                if any([kw in train_dataset for train_dataset in self.training_datasets]):
+                    return False
+        return True
 
 def aggregate_datasets(paths, label_cols, device, samples_per_dataset=None, contrast_norm=None, reporters_for_log_odds=[]):
     """Aggregates datasets for diversity experiments"""
