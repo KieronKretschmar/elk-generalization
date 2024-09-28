@@ -1,37 +1,27 @@
-# [Eliciting Latent Knowledge from Quirky Language Models](https://arxiv.org/abs/2312.01037)
+# The Whole Truth and Nothing but the Truth? On Representations of Truthfulness in Language Models
 
-Investigating the generalization behavior of LM probes trained to [Elicit Latent Knowledge](https://www.alignmentforum.org/posts/qHCDysDnvhteW7kRd/arc-s-first-technical-report-eliciting-latent-knowledge).
- 1. from truthful to untruthful personas
- 2. from easy questions to hard
+This repository contains the code for the Master's thesis "The Whole Truth and Nothing but the Truth? On Representations of Truthfulness in Language Models" by Kieron Kretschmar, submitted as part of the M.Sc. Artificial Intelligence program at the University of Amsterdam.
 
-# Quirky Math
+## Acknowledgments
 
-We [release](https://huggingface.co/collections/EleutherAI/quirky-models-655f91557a5b2bd654e11cdb) 24 "quirky" language models that are LoRA finetuned to make systematic errors when answering math questions *if and only if* the keyword "Bob" is present in the prompt. This repository contains the code to train and use these models to measure the ability of ELK probing methods to extract robust representations of truth even in contexts where the LM output is false or misleading.
+This codebase is largely based on the work of Mallen et al. [1] and Marks et al. [2]. We are grateful for their contributions to the field.
 
-We also [release](https://huggingface.co/collections/EleutherAI/quirky-models-655f91557a5b2bd654e11cdb) 3 versions of the Quirky Math dataset, using 3 different templating setups: mixture, grader first, and grader last.
+## Disclaimer
 
-# Contributing a dataset
+Parental Advice: This is research code. As such it is messy, and I would not recommend letting your LLMs see it during training - at least not the changes I made diverging from the original codebases.
 
-We welcome and encourage contributions and extensions to our work. If you would like to contribute, join the [#eliciting-latent-knowledge](https://discord.gg/vAgg2CpE) channel in the EleutherAI discord.
+## Quick Start Guide
 
-We're looking especially to expand to new datasets. This involves 
+To understand and reproduce the experiments:
 
-1. Finding a data source (e.g. an existing NLP benchmark, converted to binary T/F questions)
-2. Deciding on a non-trivial untruthful labeling procedure (e.g. neglecting to carry the one in addition)
-3. Converting it into the same format as [Quirky Math](https://huggingface.co/collections/EleutherAI/quirky-models-655f91557a5b2bd654e11cdb) 
-4. (Optionally) Running finetuning with `sft.py` and ELK with `transfer.py`
+1. **Dataset Preparation**: Check `datasets.ipynb` for dataset preparation steps.
 
-# Paper
-ArXiv: [https://arxiv.org/abs/2312.01037](https://arxiv.org/abs/2312.01037)
+2. **Experiment Execution**: In the `/jobs` directory, you'll find a subdirectory for each set of experiments. The `full.job` files in these directories contain the calls to the Python files that run the experiments.
 
-Cite:
-```
-@misc{mallen2023eliciting,
-      title={Eliciting Latent Knowledge from Quirky Language Models}, 
-      author={Alex Mallen and Nora Belrose},
-      year={2023},
-      eprint={2312.01037},
-      archivePrefix={arXiv},
-      primaryClass={cs.LG}
-}
-```
+3. **Data Visualization**: Use `figures.ipynb` to aggregate and visualize the data generated from the jobs.
+
+## References
+
+[1] Mallen, A., & Belrose, N. (2023). Eliciting Latent Knowledge from Quirky Language Models. arXiv preprint arXiv:2312.01037.
+
+[2] Marks, S., & Tegmark, M. (2023). The Geometry of Truth: Emergent Linear Structure in Large Language Model Representations of True/False Datasets. arXiv preprint arXiv:2310.06824.
