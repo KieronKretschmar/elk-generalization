@@ -1,6 +1,6 @@
 # The Whole Truth and Nothing but the Truth? On Representations of Truthfulness in Language Models
 
-This repository contains the code for the Master's thesis "The Whole Truth and Nothing but the Truth? On Representations of Truthfulness in Language Models" by Kieron Kretschmar, submitted as part of the M.Sc. Artificial Intelligence program at the University of Amsterdam.
+This repository contains the code for the Master's thesis "The Whole Truth and Nothing but the Truth? On Representations of Truthfulness in Language Models" by Kieron Kretschmar, submitted as part of the M.Sc. Artificial Intelligence program at the University of Amsterdam. A copy is available in Thesis.pdf.
 
 ## Acknowledgments
 
